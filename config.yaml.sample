@@ -1,0 +1,11 @@
+vcenter_host: "192.168.0.254" #  vCenter IP address or hostname
+vcenter_user: "administrator@deal.local" # Username for the vCenter user
+vcenter_password: "s3cr3t" # Password for the vCenter user
+datacenter: "Datacenter1"        # Datacenter name
+cluster: ""              # Cluster name (leave empty for standalone ESXi)
+datastore: "N4T0"          # Default datastore name
+network: "VM Network"            # Default network name
+insecure: true                  # Skip SSL certificate verification
+api_key: "s3cr3t-api-key"        # API key for authentication
+log_file: "./logs/vmware_mcp.log"  # Log file path
+log_level: "DEBUG"                # Log level: DEBUG/INFO/WARNING/ERROR

@@ -1,0 +1,37 @@
+# MCP Server dependencies
+mcp>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+PyYAML>=6.0
+
+# VMware SDK - Official VMware vSphere Automation SDK dependencies
+# Common requirements
+lxml>=4.3.0
+six>=1.12
+requests>=2.27.1
+pyOpenSSL>=22.0.0
+cryptography>=37.0.2
+setuptools>=62.3.2
+
+# SDK requirements - Core VMware vCenter packages only
+pyVmomi==9.0.0.0
+vmware-vapi-common-client==2.61.2
+vmware-vapi-runtime==2.61.2
+vmware-vcenter==9.0.0.0
+
+# Additional dependencies for our implementation
+urllib3>=1.26.0
+
+# Testing dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# Development dependencies
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+
+# Logging and utilities
+structlog>=23.1.0
