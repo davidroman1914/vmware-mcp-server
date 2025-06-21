@@ -502,4 +502,116 @@ class VMwareManager:
             
             time.sleep(5)  # Wait 5 seconds before checking again
         
-        raise TimeoutError(f"Timeout waiting for IP address for VM {vm_id}") 
+        raise TimeoutError(f"Timeout waiting for IP address for VM {vm_id}")
+    
+    def get_vm_guest_info(self, vm_name: str) -> dict:
+        """Get detailed guest information for a virtual machine."""
+        vm_id = self.find_vm(vm_name)
+        if not vm_id:
+            raise ValueError(f"VM {vm_name} not found")
+        
+        try:
+            # Get comprehensive guest information
+            guest_info = self.client.vcenter.vm.Guest.get(vm_id)
+            hardware_info = self.client.vcenter.vm.Hardware.get(vm_id)
+            power_info = self.client.vcenter.vm.Power.get(vm_id)
+            
+            # Build comprehensive guest info dictionary
+            guest_data = {
+                'name': vm_name,
+                'vm_id': vm_id,
+                'power_state': power_info.state.value,
+                'tools_running_status': guest_info.tools_running_status.value if guest_info.tools_running_status else "UNKNOWN",
+                'tools_version': guest_info.tools_version if guest_info.tools_version else "UNKNOWN",
+                'tools_version_status': guest_info.tools_version_status.value if guest_info.tools_version_status else "UNKNOWN",
+                'guest_id': hardware_info.guest_ID,
+                'guest_full_name': guest_info.guest_full_name if guest_info.guest_full_name else "UNKNOWN",
+                'guest_family': guest_info.guest_family.value if guest_info.guest_family else "UNKNOWN",
+                'ip_address': guest_info.ip_address if guest_info.ip_address else "UNKNOWN",
+                'hostname': guest_info.host_name if guest_info.host_name else "UNKNOWN",
+                'memory_usage_mb': guest_info.memory_usage_MiB if guest_info.memory_usage_MiB else 0,
+                'cpu_count': hardware_info.cpu.count,
+                'memory_mb': hardware_info.memory.size_MiB,
+                'disks': [],
+                'nics': []
+            }
+            
+            # Get disk information
+            if hasattr(hardware_info, 'disks') and hardware_info.disks:
+                for disk in hardware_info.disks:
+                    disk_info = {
+                        'label': disk.label,
+                        'type': disk.type.value,
+                        'capacity_gb': disk.capacity / (1024**3) if disk.capacity else 0
+                    }
+                    guest_data['disks'].append(disk_info)
+            
+            # Get network interface information
+            if hasattr(hardware_info, 'nics') and hardware_info.nics:
+                for nic in hardware_info.nics:
+                    nic_info = {
+                        'label': nic.label,
+                        'type': nic.type.value,
+                        'backing_type': nic.backing.type.value if nic.backing else "UNKNOWN"
+                    }
+                    guest_data['nics'].append(nic_info)
+            
+            return guest_data
+            
+        except Exception as e:
+            logging.error(f"Failed to get guest info for VM {vm_name}: {e}")
+            raise
+    
+    def test_guest_info_connection(self) -> dict:
+        """Test guest info functionality by listing VMs and getting basic info."""
+        try:
+            logging.info("Testing guest info connection...")
+            
+            # List all VMs to test basic connectivity
+            vms = self.list_vms()
+            
+            test_results = {
+                'connection_status': 'SUCCESS',
+                'total_vms_found': len(vms),
+                'vm_list': [],
+                'guest_info_test': 'PENDING'
+            }
+            
+            # Get basic info for each VM
+            for vm in vms:
+                vm_basic_info = {
+                    'name': vm.name,
+                    'power_state': vm.power_state,
+                    'cpu_count': vm.cpu_count,
+                    'memory_mb': vm.memory_mb,
+                    'guest_id': vm.guest_id,
+                    'tools_status': vm.tools_status
+                }
+                test_results['vm_list'].append(vm_basic_info)
+            
+            # Try to get detailed guest info for the first VM if any exist
+            if vms:
+                try:
+                    first_vm = vms[0]
+                    logging.info(f"Testing detailed guest info for VM: {first_vm.name}")
+                    detailed_info = self.get_vm_guest_info(first_vm.name)
+                    test_results['guest_info_test'] = 'SUCCESS'
+                    test_results['sample_guest_info'] = detailed_info
+                except Exception as e:
+                    logging.warning(f"Detailed guest info test failed: {e}")
+                    test_results['guest_info_test'] = f'FAILED: {str(e)}'
+            else:
+                test_results['guest_info_test'] = 'SKIPPED: No VMs found'
+            
+            logging.info("Guest info connection test completed successfully")
+            return test_results
+            
+        except Exception as e:
+            logging.error(f"Guest info connection test failed: {e}")
+            return {
+                'connection_status': 'FAILED',
+                'error': str(e),
+                'total_vms_found': 0,
+                'vm_list': [],
+                'guest_info_test': 'FAILED'
+            } 

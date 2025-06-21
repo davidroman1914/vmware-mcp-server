@@ -3,6 +3,7 @@ MCP Server implementation for ESXi management.
 """
 import logging
 from typing import Any, Dict, List, Optional
+import os
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -191,6 +192,38 @@ class ESXiMCPServer:
                 }
             ),
             Tool(
+                name="get_vm_guest_info",
+                description="Get detailed guest information for a virtual machine",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "api_key": {
+                            "type": "string",
+                            "description": "API key for authentication"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the virtual machine"
+                        }
+                    },
+                    "required": ["api_key", "name"]
+                }
+            ),
+            Tool(
+                name="test_guest_info",
+                description="Test guest info functionality and connection",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "api_key": {
+                            "type": "string",
+                            "description": "API key for authentication"
+                        }
+                    },
+                    "required": ["api_key"]
+                }
+            ),
+            Tool(
                 name="create_vm_from_template",
                 description="Create a VM from template with customization (similar to Ansible vmware_guest)",
                 inputSchema={
@@ -295,6 +328,10 @@ class ESXiMCPServer:
                 return await self._handle_power_on(request)
             elif request.name == "power_off":
                 return await self._handle_power_off(request)
+            elif request.name == "get_vm_guest_info":
+                return await self._handle_get_vm_guest_info(request)
+            elif request.name == "test_guest_info":
+                return await self._handle_test_guest_info(request)
             elif request.name == "create_vm_from_template":
                 try:
                     vm_id = self.vmware_manager.create_vm_from_template(
@@ -466,6 +503,46 @@ class ESXiMCPServer:
             ]
         )
     
+    async def _handle_get_vm_guest_info(self, request: CallToolRequest) -> CallToolResult:
+        """Handle get VM guest info tool."""
+        name = request.arguments["name"]
+        
+        guest_info = self.vmware_manager.get_vm_guest_info(name)
+        
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=guest_info
+                )
+            ]
+        )
+    
+    async def _handle_test_guest_info(self, request: CallToolRequest) -> CallToolResult:
+        """Handle test guest info tool."""
+        try:
+            # Test the guest info functionality
+            test_results = self.vmware_manager.test_guest_info_connection()
+            
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"Guest Info Test Results: {test_results}"
+                    )
+                ]
+            )
+        except Exception as e:
+            logging.error(f"Error in test_guest_info: {e}")
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"Error testing guest info: {str(e)}"
+                    )
+                ]
+            )
+    
     async def list_resources(self, request: ListResourcesRequest) -> ListResourcesResult:
         """List available resources."""
         if not self.vmware_manager:
@@ -526,6 +603,7 @@ class ESXiMCPServer:
 
 async def create_server(config: Config) -> Server:
     """Create and configure the MCP server."""
+    logging.info("=== CREATE SERVER DEBUG ===")
     logging.info("Creating ESXi MCP server instance...")
     esxi_server = ESXiMCPServer(config)
     logging.info("ESXi MCP server instance created successfully")
@@ -533,26 +611,56 @@ async def create_server(config: Config) -> Server:
     logging.info("Creating MCP Server object...")
     server = Server("vmware-mcp-server")
     logging.info("MCP Server object created successfully")
+    logging.info(f"Server object type: {type(server)}")
+    logging.info(f"Server object dir: {dir(server)}")
     
     logging.info("Registering list_tools handler...")
-    @server.list_tools()
-    async def handle_list_tools(request: ListToolsRequest) -> ListToolsResult:
-        logging.debug("list_tools handler called")
-        return await esxi_server.list_tools(request)
+    try:
+        @server.list_tools()
+        async def handle_list_tools(request: ListToolsRequest) -> ListToolsResult:
+            logging.debug("list_tools handler called")
+            logging.debug(f"list_tools request: {request}")
+            result = await esxi_server.list_tools(request)
+            logging.debug(f"list_tools result: {result}")
+            return result
+        logging.info("list_tools handler registered successfully")
+    except Exception as e:
+        logging.error(f"Failed to register list_tools handler: {e}")
+        logging.error(f"list_tools error traceback: {traceback.format_exc()}")
+        raise
     
     logging.info("Registering call_tool handler...")
-    @server.call_tool()
-    async def handle_call_tool(request: CallToolRequest) -> CallToolResult:
-        logging.debug("call_tool handler called")
-        return await esxi_server.call_tool(request)
+    try:
+        @server.call_tool()
+        async def handle_call_tool(request: CallToolRequest) -> CallToolResult:
+            logging.debug("call_tool handler called")
+            logging.debug(f"call_tool request: {request}")
+            result = await esxi_server.call_tool(request)
+            logging.debug(f"call_tool result: {result}")
+            return result
+        logging.info("call_tool handler registered successfully")
+    except Exception as e:
+        logging.error(f"Failed to register call_tool handler: {e}")
+        logging.error(f"call_tool error traceback: {traceback.format_exc()}")
+        raise
     
     logging.info("Registering list_resources handler...")
-    @server.list_resources()
-    async def handle_list_resources(request: ListResourcesRequest) -> ListResourcesResult:
-        logging.debug("list_resources handler called")
-        return await esxi_server.list_resources(request)
+    try:
+        @server.list_resources()
+        async def handle_list_resources(request: ListResourcesRequest) -> ListResourcesResult:
+            logging.debug("list_resources handler called")
+            logging.debug(f"list_resources request: {request}")
+            result = await esxi_server.list_resources(request)
+            logging.debug(f"list_resources result: {result}")
+            return result
+        logging.info("list_resources handler registered successfully")
+    except Exception as e:
+        logging.error(f"Failed to register list_resources handler: {e}")
+        logging.error(f"list_resources error traceback: {traceback.format_exc()}")
+        raise
     
     logging.info("All MCP server handlers registered successfully")
+    logging.info(f"Final server object: {server}")
     return server
 
 
@@ -562,36 +670,59 @@ async def run_server(config: Config) -> None:
     from mcp.server.lowlevel import NotificationOptions
     from mcp.server.models import InitializationOptions
     import traceback
+    import sys
     
-    logging.info("Creating MCP server instance...")
-    server = await create_server(config)
-    logging.info("MCP server instance created successfully")
+    logging.info("=== MCP SERVER STARTUP DEBUG ===")
+    logging.info(f"Python version: {sys.version}")
+    logging.info(f"Working directory: {os.getcwd()}")
     
-    # Set up proper initialization options
-    logging.info("Setting up initialization options...")
-    init_options = InitializationOptions(
-        server_name="vmware-mcp-server",
-        server_version="1.1.0",
-        capabilities=server.get_capabilities(
-            notification_options=NotificationOptions(),
-            experimental_capabilities={},
-        ),
-    )
-    logging.info("Initialization options configured successfully")
-    
-    # Run the server using stdio transport with proper initialization
     try:
-        logging.info("Starting stdio server with low-level API...")
-        async with stdio_server() as (read_stream, write_stream):
-            logging.info("stdio streams acquired, running server...")
-            await server.run(
-                read_stream,
-                write_stream,
-                init_options,
-            )
-            logging.info("Server run completed successfully")
-    except Exception as e:
-        logging.error(f"Failed to run server: {e}")
-        logging.error(f"Error type: {type(e).__name__}")
-        logging.error(f"Full error traceback: {traceback.format_exc()}")
+        logging.info("Creating MCP server instance...")
+        server = await create_server(config)
+        logging.info("MCP server instance created successfully")
+        
+        # Set up proper initialization options
+        logging.info("Setting up initialization options...")
+        init_options = InitializationOptions(
+            server_name="vmware-mcp-server",
+            server_version="1.1.0",
+            capabilities=server.get_capabilities(
+                notification_options=NotificationOptions(),
+                experimental_capabilities={},
+            ),
+        )
+        logging.info("Initialization options configured successfully")
+        logging.info(f"Server capabilities: {server.get_capabilities()}")
+        
+        # Run the server using stdio transport with proper initialization
+        try:
+            logging.info("Starting stdio server with low-level API...")
+            logging.info("About to enter stdio_server context manager...")
+            async with stdio_server() as (read_stream, write_stream):
+                logging.info("stdio streams acquired successfully")
+                logging.info(f"read_stream type: {type(read_stream)}")
+                logging.info(f"write_stream type: {type(write_stream)}")
+                logging.info("About to call server.run()...")
+                await server.run(
+                    read_stream,
+                    write_stream,
+                    init_options,
+                )
+                logging.info("Server run completed successfully")
+        except Exception as e:
+            logging.error(f"Failed to run server: {e}")
+            logging.error(f"Error type: {type(e).__name__}")
+            logging.error(f"Error args: {e.args}")
+            logging.error(f"Full error traceback: {traceback.format_exc()}")
+            
+            # Try to get more details about the error
+            if hasattr(e, '__cause__') and e.__cause__:
+                logging.error(f"Caused by: {e.__cause__}")
+                logging.error(f"Cause traceback: {traceback.format_exc()}")
+            
+            raise
+    except Exception as outer_e:
+        logging.error(f"Outer exception during server startup: {outer_e}")
+        logging.error(f"Outer error type: {type(outer_e).__name__}")
+        logging.error(f"Outer error traceback: {traceback.format_exc()}")
         raise 
