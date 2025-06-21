@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "esxi-mcp-server"
+name = "vmware-mcp-server"
 version = "1.0.0"
 description = "A Model Context Protocol (MCP) server for managing VMware ESXi/vSphere environments"
 readme = "README.md"
@@ -63,7 +63,7 @@ dev = [
 ]
 
 [project.scripts]
-esxi-mcp-server = "src.__main__:main"
+vmware-mcp-server = "src.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/davidroman1914/vmware-mcp-server"
