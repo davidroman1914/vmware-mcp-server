@@ -4,7 +4,8 @@ from helpers import (
     safe_get_attr, 
     format_bytes, 
     get_vm_by_id, 
-    get_network_name
+    get_network_name,
+    get_vm_placement_info
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -116,6 +117,25 @@ def get_vm_info_text(vm_id: str) -> str:
             sections.append(f"### CPU\n- **CPU:** {safe_get_attr(cpu_info, 'count')} cores")
         except Exception as e:
             logger.error(f"Failed to get CPU info: {str(e)}")
+        
+        # Placement Information
+        try:
+            placement_info = get_vm_placement_info(client, vm_id)
+            if placement_info:
+                placement_lines = ["### Placement Information"]
+                if placement_info.get('resource_pool') and placement_info['resource_pool'] != "Unknown":
+                    placement_lines.append(f"- **Resource Pool:** {placement_info['resource_pool']}")
+                if placement_info.get('datastore') and placement_info['datastore'] != "Unknown":
+                    placement_lines.append(f"- **Datastore:** {placement_info['datastore']}")
+                if placement_info.get('folder') and placement_info['folder'] != "Unknown":
+                    placement_lines.append(f"- **Folder:** {placement_info['folder']}")
+                if placement_info.get('cluster') and placement_info['cluster'] != "Unknown":
+                    placement_lines.append(f"- **Cluster:** {placement_info['cluster']}")
+                
+                if len(placement_lines) > 1:  # More than just the header
+                    sections.append("\n".join(placement_lines))
+        except Exception as e:
+            logger.error(f"Failed to get placement info: {str(e)}")
         
         # Network Adapters
         try:

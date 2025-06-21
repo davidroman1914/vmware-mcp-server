@@ -92,6 +92,95 @@ def get_network_name(client, network_id):
         logger.error(f"Failed to get network name for {network_id}: {str(e)}")
         return "Unknown"
 
+def get_resource_pool_name(client, resource_pool_id):
+    """Get resource pool name from ID."""
+    try:
+        from com.vmware.vcenter_client import ResourcePool
+        filter_spec = ResourcePool.FilterSpec(resource_pools=set([resource_pool_id]))
+        resource_pools = client.vcenter.ResourcePool.list(filter=filter_spec)
+        
+        if resource_pools:
+            return resource_pools[0].name
+        else:
+            return "Unknown"
+    except Exception as e:
+        logger.error(f"Failed to get resource pool name for {resource_pool_id}: {str(e)}")
+        return "Unknown"
+
+def get_datastore_name(client, datastore_id):
+    """Get datastore name from ID."""
+    try:
+        from com.vmware.vcenter_client import Datastore
+        filter_spec = Datastore.FilterSpec(datastores=set([datastore_id]))
+        datastores = client.vcenter.Datastore.list(filter=filter_spec)
+        
+        if datastores:
+            return datastores[0].name
+        else:
+            return "Unknown"
+    except Exception as e:
+        logger.error(f"Failed to get datastore name for {datastore_id}: {str(e)}")
+        return "Unknown"
+
+def get_folder_name(client, folder_id):
+    """Get folder name from ID."""
+    try:
+        from com.vmware.vcenter_client import Folder
+        filter_spec = Folder.FilterSpec(folders=set([folder_id]))
+        folders = client.vcenter.Folder.list(filter=filter_spec)
+        
+        if folders:
+            return folders[0].name
+        else:
+            return "Unknown"
+    except Exception as e:
+        logger.error(f"Failed to get folder name for {folder_id}: {str(e)}")
+        return "Unknown"
+
+def get_cluster_name(client, cluster_id):
+    """Get cluster name from ID."""
+    try:
+        from com.vmware.vcenter_client import Cluster
+        filter_spec = Cluster.FilterSpec(clusters=set([cluster_id]))
+        clusters = client.vcenter.Cluster.list(filter=filter_spec)
+        
+        if clusters:
+            return clusters[0].name
+        else:
+            return "Unknown"
+    except Exception as e:
+        logger.error(f"Failed to get cluster name for {cluster_id}: {str(e)}")
+        return "Unknown"
+
+def get_vm_placement_info(client, vm_id):
+    """Get VM placement information including resource pool, datastore, folder, and cluster."""
+    try:
+        vm_info = client.vcenter.VM.get(vm_id)
+        
+        placement_info = {}
+        
+        # Get resource pool
+        if hasattr(vm_info, 'resource_pool') and vm_info.resource_pool:
+            placement_info['resource_pool'] = get_resource_pool_name(client, vm_info.resource_pool)
+        
+        # Get datastore (from placement)
+        if hasattr(vm_info, 'datastore') and vm_info.datastore:
+            placement_info['datastore'] = get_datastore_name(client, vm_info.datastore)
+        
+        # Get folder
+        if hasattr(vm_info, 'folder') and vm_info.folder:
+            placement_info['folder'] = get_folder_name(client, vm_info.folder)
+        
+        # Get cluster (if available)
+        if hasattr(vm_info, 'cluster') and vm_info.cluster:
+            placement_info['cluster'] = get_cluster_name(client, vm_info.cluster)
+        
+        return placement_info
+        
+    except Exception as e:
+        logger.error(f"Failed to get VM placement info for {vm_id}: {str(e)}")
+        return {}
+
 def safe_api_call(func, error_msg):
     """Safely execute API call and return formatted result or error."""
     try:

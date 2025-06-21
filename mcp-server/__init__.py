@@ -14,7 +14,12 @@ from .helpers import (
     format_bytes,
     get_vm_by_id,
     get_network_name,
-    safe_api_call
+    safe_api_call,
+    get_resource_pool_name,
+    get_datastore_name,
+    get_folder_name,
+    get_cluster_name,
+    get_vm_placement_info
 )
 
 __version__ = "1.0.0"
@@ -29,5 +34,10 @@ __all__ = [
     "format_bytes",
     "get_vm_by_id",
     "get_network_name",
-    "safe_api_call"
+    "safe_api_call",
+    "get_resource_pool_name",
+    "get_datastore_name",
+    "get_folder_name",
+    "get_cluster_name",
+    "get_vm_placement_info"
 ]
