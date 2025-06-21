@@ -4,6 +4,7 @@ import urllib3
 import logging
 import json
 from vmware.vapi.vsphere.client import create_vsphere_client
+from com.vmware.vcenter.vm.hardware_client import Memory, Disk
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -143,17 +144,17 @@ def get_vm_info_text(vm_id: str) -> str:
                 'call': lambda: client.vcenter.vm.hardware.Ethernet.list(vm_id),
                 'format': lambda data: [
                     f"Count             : {len(data) if data else 0}",
-                    *[f"Adapter {i+1}      : {safe_get_attr(adapter, 'nic')} - {safe_get_attr(safe_get_attr(adapter, 'backing'), 'network_name', safe_get_attr(safe_get_attr(adapter, 'backing'), 'network', 'Unknown'))}" 
+                    *[f"Adapter {i+1}      : {safe_get_attr(adapter, 'nic')} - {get_network_details(client, vm_id, safe_get_attr(adapter, 'nic'))}" 
                       for i, adapter in enumerate(data or [])]
                 ]
             },
             {
                 'name': 'Disks',
                 'call': lambda: client.vcenter.vm.hardware.Disk.list(vm_id),
-                'format': lambda data: [
-                    f"Count             : {len(data) if data else 0}",
-                    *[f"Disk {i+1}        : {safe_get_attr(disk, 'disk')} - {safe_get_attr(safe_get_attr(disk, 'backing'), 'vmdk_file', 'Unknown')} (Capacity: {format_bytes(safe_get_attr(disk, 'capacity'))})" 
-                      for i, disk in enumerate(data or [])]
+                'format': lambda disk_list: [
+                    f"Count             : {len(disk_list) if disk_list else 0}",
+                    *[f"Disk {i+1}        : {safe_get_attr(disk, 'disk')} - {get_disk_details(client, vm_id, safe_get_attr(disk, 'disk'))}" 
+                      for i, disk in enumerate(disk_list or [])]
                 ]
             }
         ]
@@ -172,9 +173,48 @@ def get_vm_info_text(vm_id: str) -> str:
                 logger.error(f"Failed to get {api_call['name'].lower()}: {str(e)}")
                 sections.append(f"❌ Failed to get {api_call['name'].lower()}: {str(e)}")
         
-        return "\n\n".join(sections)
+        result = "\n\n".join(sections)
+        # Ensure we always return a string
+        return str(result) if result else "No VM information available"
         
     except Exception as e:
         logger.error(f"Failed to connect to vCenter: {str(e)}")
         return f"❌ Failed to connect to vCenter: {str(e)}"
+
+def get_disk_details(client, vm_id, disk_id):
+    """Get detailed information for a specific disk."""
+    try:
+        disk_info = client.vcenter.vm.hardware.Disk.get(vm=vm_id, disk=disk_id)
+        vmdk_file = safe_get_attr(safe_get_attr(disk_info, 'backing'), 'vmdk_file', 'Unknown')
+        capacity = format_bytes(safe_get_attr(disk_info, 'capacity'))
+        return f"{vmdk_file} (Capacity: {capacity})"
+    except Exception as e:
+        logger.error(f"Failed to get disk details for disk {disk_id}: {str(e)}")
+        return "Unknown"
+
+def get_network_details(client, vm_id, nic_id):
+    """Get detailed information for a specific network adapter."""
+    try:
+        nic_info = client.vcenter.vm.hardware.Ethernet.get(vm=vm_id, nic=nic_id)
+        
+        # Inspect the network adapter object structure
+        inspect_object(nic_info, f"Network Adapter {nic_id}")
+        
+        # Safely get network name from backing
+        backing = safe_get_attr(nic_info, 'backing', "No backing")
+        network_name = "Unknown"
+        if backing and backing != "No backing":
+            inspect_object(backing, f"Network Adapter {nic_id} Backing")
+            network_name = safe_get_attr(backing, 'network_name', 
+                                       safe_get_attr(backing, 'network', 'Unknown'))
+        
+        # Safely get other attributes
+        mac_address = safe_get_attr(nic_info, 'mac_address', 'Unknown')
+        mac_type = safe_get_attr(nic_info, 'mac_type', 'Unknown')
+        start_connected = safe_get_attr(nic_info, 'start_connected', 'Unknown')
+        
+        return f"{network_name} (MAC: {mac_address}, Type: {mac_type}, Connected: {start_connected})"
+    except Exception as e:
+        logger.error(f"Failed to get network details for nic {nic_id}: {str(e)}")
+        return "Unknown"
 
