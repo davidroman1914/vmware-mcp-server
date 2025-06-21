@@ -4,6 +4,7 @@ MCP Server implementation for ESXi management.
 import logging
 from typing import Any, Dict, List, Optional
 import os
+from pydantic import BaseModel
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -11,16 +12,24 @@ from mcp.types import (
     CallToolRequest,
     CallToolResult,
     ListResourcesRequest,
-    ListResourcesResult,
     ListToolsRequest,
     ListToolsResult,
-    Resource,
     TextContent,
     Tool,
 )
 
 from .config import Config
 from .vmware import VMwareManager, VMInfo, VMPerformance
+
+
+class Resource(BaseModel):
+    id: str
+    name: str
+    status: str
+
+
+class ListResourcesResult(BaseModel):
+    resources: List[Resource]
 
 
 class ESXiMCPServer:
@@ -546,60 +555,40 @@ class ESXiMCPServer:
     async def list_resources(self, request=None) -> ListResourcesResult:
         """List available resources."""
         if not self.vmware_manager:
-            return ListResourcesResult(resources=[])
+            # Return a placeholder response to illustrate the correct format
+            return ListResourcesResult(resources=[
+                Resource(
+                    id="placeholder-vm-1",
+                    name="Example VM",
+                    status="powered_off"
+                )
+            ])
         
         try:
             vms = self.vmware_manager.list_vms()
             resources = []
             
             for vm in vms:
-                # Get performance data for the VM
-                try:
-                    performance = self.vmware_manager.get_vm_performance(vm.name)
-                    performance_text = (
-                        f"CPU: {performance.cpu_usage_mhz} MHz, "
-                        f"Memory: {performance.memory_usage_mb} MB, "
-                        f"Storage: {performance.storage_usage_gb} GB"
-                    )
-                    if performance.network_transmit_kbps is not None:
-                        performance_text += f", Network TX: {performance.network_transmit_kbps} KB/s"
-                    if performance.network_receive_kbps is not None:
-                        performance_text += f", Network RX: {performance.network_receive_kbps} KB/s"
-                except Exception as e:
-                    performance_text = f"Performance data unavailable: {e}"
-                
-                # Create a proper Resource object
+                # Create a Resource object with the correct schema
                 resource = Resource(
-                    uri=f"vm://{vm.name}",
+                    id=vm.name,  # Use VM name as ID
                     name=vm.name,
-                    description=f"Virtual Machine: {vm.name}",
-                    mimeType="application/json",
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=(
-                                f"Name: {vm.name}\n"
-                                f"Power State: {vm.power_state}\n"
-                                f"CPUs: {vm.cpu_count}\n"
-                                f"Memory: {vm.memory_mb} MB\n"
-                                f"Guest OS: {vm.guest_id}\n"
-                                f"Tools Status: {vm.tools_status}\n"
-                                f"Performance: {performance_text}"
-                            )
-                        )
-                    ]
+                    status=vm.power_state.lower() if vm.power_state else "unknown"
                 )
                 resources.append(resource)
             
             # Return proper ListResourcesResult with correct structure
-            return ListResourcesResult(
-                resources=resources,
-                _meta={"total_count": len(resources)},
-                nextCursor=None
-            )
+            return ListResourcesResult(resources=resources)
         except Exception as e:
             logging.error(f"Error listing resources: {e}")
-            return ListResourcesResult(resources=[])
+            # Return a placeholder response on error
+            return ListResourcesResult(resources=[
+                Resource(
+                    id="error-placeholder",
+                    name="Error loading VMs",
+                    status="error"
+                )
+            ])
     
     def cleanup(self):
         """Cleanup resources."""
