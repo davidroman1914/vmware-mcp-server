@@ -692,7 +692,7 @@ async def run_server(config: Config) -> None:
             ),
         )
         logging.info("Initialization options configured successfully")
-        logging.info(f"Server capabilities: {server.get_capabilities()}")
+        logging.info(f"Server capabilities: {server.get_capabilities(NotificationOptions(), {})}")
         
         # Run the server using stdio transport with proper initialization
         try:
