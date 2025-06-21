@@ -6,6 +6,7 @@ FROM vmware-mcp-server-base:latest
 # Copy application code only
 COPY src/ ./src/
 COPY tests/ ./tests/
+COPY main.py ./main.py
 COPY config.yaml.sample ./config.yaml.sample
 
 # Set ownership
