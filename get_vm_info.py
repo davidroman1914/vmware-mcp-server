@@ -109,61 +109,45 @@ def get_vm_info_text(vm_id: str) -> str:
         # Define API calls and their formatting with enhanced helpers
         api_calls = [
             {
-                'name': 'VM Basic Info',
+                'name': 'Basic Information',
                 'call': lambda: vm_info,
                 'format': lambda data: [
-                    f"Name              : {safe_get_attr(data, 'name')}",
-                    f"ID                : {safe_get_attr(data, 'vm')}",
-                    f"Guest OS          : {get_guest_os_info(client, vm_id)}"
-                ]
-            },
-            {
-                'name': 'Guest Identity',
-                'call': lambda: client.vcenter.vm.guest.Identity.get(vm_id),
-                'format': lambda data: [
-                    f"Host Name         : {safe_get_attr(data, 'name')}",
-                    f"Ip Address        : {safe_get_attr(data, 'ip_address')}",
-                    f"Guest OS          : {safe_get_attr(data, 'guest_os')}"
+                    f"Name: {safe_get_attr(data, 'name')}",
+                    f"ID: {safe_get_attr(data, 'vm')}"
                 ]
             },
             {
                 'name': 'Power State',
                 'call': lambda: client.vcenter.vm.Power.get(vm_id),
-                'format': lambda data: [f"Power State       : {safe_get_attr(data, 'state')}"]
+                'format': lambda data: [f"Power State: {safe_get_attr(data, 'state')}"]
             },
             {
                 'name': 'Memory',
-                'call': lambda: client.vcenter.vm.hardware.Memory.get(vm_id),
-                'format': lambda data: [
-                    f"Size MiB          : {safe_get_attr(data, 'size_MiB')}",
-                    f"Hot Add Enabled   : {safe_get_attr(data, 'hot_add_enabled')}"
-                ]
+                'call': lambda: get_memory_info(client, vm_id),
+                'format': lambda data: [f"Memory: {data['size']}"] if data['size'] != "Not available" else []
             },
             {
                 'name': 'CPU',
                 'call': lambda: client.vcenter.vm.hardware.Cpu.get(vm_id),
-                'format': lambda data: [
-                    f"Count             : {safe_get_attr(data, 'count')}",
-                    f"Hot Add Enabled   : {safe_get_attr(data, 'hot_add_enabled')}"
-                ]
+                'format': lambda data: [f"CPU: {safe_get_attr(data, 'count')} cores"]
             },
             {
                 'name': 'Network Adapters',
                 'call': lambda: client.vcenter.vm.hardware.Ethernet.list(vm_id),
                 'format': lambda data: [
-                    f"Count             : {len(data) if data else 0}",
-                    *[f"Adapter {i+1}      : {safe_get_attr(adapter, 'nic')} - {get_network_details(client, vm_id, safe_get_attr(adapter, 'nic'))}" 
-                      for i, adapter in enumerate(data or [])]
-                ]
+                    f"Network Adapters: {len(data) if data else 0}",
+                    *[f"  {get_network_details_clean(client, vm_id, safe_get_attr(adapter, 'nic'))}" 
+                      for adapter in (data or [])]
+                ] if data else []
             },
             {
                 'name': 'Disks',
                 'call': lambda: client.vcenter.vm.hardware.Disk.list(vm_id),
                 'format': lambda disk_list: [
-                    f"Count             : {len(disk_list) if disk_list else 0}",
-                    *[f"Disk {i+1}        : {safe_get_attr(disk, 'disk')} - {get_disk_details(client, vm_id, safe_get_attr(disk, 'disk'))}" 
-                      for i, disk in enumerate(disk_list or [])]
-                ]
+                    f"Disks: {len(disk_list) if disk_list else 0}",
+                    *[f"  {get_disk_details_clean(client, vm_id, safe_get_attr(disk, 'disk'))}" 
+                      for disk in (disk_list or [])]
+                ] if disk_list else []
             }
         ]
         
@@ -175,11 +159,12 @@ def get_vm_info_text(vm_id: str) -> str:
                 # Inspect the object structure
                 inspect_object(data, api_call['name'])
                 
-                section_lines = [f"---- {api_call['name']} ----"] + api_call['format'](data)
-                sections.append("\n".join(section_lines))
+                section_lines = api_call['format'](data)
+                if section_lines:  # Only add section if there's content
+                    sections.append(f"### {api_call['name']}\n" + "\n".join([f"- **{line}**" for line in section_lines]))
             except Exception as e:
                 logger.error(f"Failed to get {api_call['name'].lower()}: {str(e)}")
-                sections.append(f"❌ Failed to get {api_call['name'].lower()}: {str(e)}")
+                # Don't add failed sections to keep output clean
         
         result = "\n\n".join(sections)
         # Ensure we always return a string
@@ -286,5 +271,102 @@ def get_network_name(client, network_id):
             return "Unknown"
     except Exception as e:
         logger.error(f"Failed to get network name for {network_id}: {str(e)}")
+        return "Unknown"
+
+def get_memory_info(client, vm_id):
+    """Get detailed memory information with proper error handling."""
+    try:
+        memory_info = client.vcenter.vm.hardware.Memory.get(vm_id)
+        
+        # Inspect the memory object structure
+        inspect_object(memory_info, f"Memory Info for VM {vm_id}")
+        
+        # Use the correct attribute name from VMware sample: size_mib
+        size_mib = safe_get_attr(memory_info, 'size_mib', "Not found")
+        
+        # Format memory size
+        if size_mib and size_mib != "Not available" and size_mib != "Not found":
+            try:
+                size_mb = int(size_mib)
+                if size_mb >= 1024:
+                    size_gb = size_mb / 1024
+                    memory_size = f"{size_mb} MiB ({size_gb:.1f} GB)"
+                else:
+                    memory_size = f"{size_mb} MiB"
+            except (ValueError, TypeError):
+                memory_size = f"{size_mib} MiB"
+        else:
+            memory_size = "Not available"
+        
+        hot_add_enabled = safe_get_attr(memory_info, 'hot_add_enabled', "False")
+        
+        return {
+            'size': memory_size,
+            'hot_add_enabled': hot_add_enabled
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get memory info for VM {vm_id}: {str(e)}")
+        return {
+            'size': "Not available",
+            'hot_add_enabled': False
+        }
+
+def get_network_details_clean(client, vm_id, nic_id):
+    """Get clean network information without Unknown values."""
+    try:
+        nic_info = client.vcenter.vm.hardware.Ethernet.get(vm=vm_id, nic=nic_id)
+        
+        # Get network name from backing
+        backing = safe_get_attr(nic_info, 'backing', "No backing")
+        network_name = "Unknown"
+        if backing and backing != "No backing":
+            # Try to get network name using helper
+            network_id = safe_get_attr(backing, 'network', "No network ID")
+            if network_id and network_id != "No network ID":
+                network_name = get_network_name(client, network_id)
+            else:
+                network_name = safe_get_attr(backing, 'network_name', 'Unknown')
+        
+        # Get other attributes
+        mac_address = safe_get_attr(nic_info, 'mac_address', 'Unknown')
+        mac_type = safe_get_attr(nic_info, 'mac_type', 'Unknown')
+        start_connected = safe_get_attr(nic_info, 'start_connected', 'Unknown')
+        
+        # Build clean output
+        parts = []
+        if network_name != "Unknown":
+            parts.append(f"Network: {network_name}")
+        if mac_address != "Unknown":
+            parts.append(f"MAC: {mac_address}")
+        if mac_type != "Unknown":
+            parts.append(f"Type: {mac_type}")
+        if start_connected != "Unknown":
+            parts.append(f"Connected: {start_connected}")
+        
+        return " | ".join(parts) if parts else "Unknown"
+        
+    except Exception as e:
+        logger.error(f"Failed to get network details for nic {nic_id}: {str(e)}")
+        return "Unknown"
+
+def get_disk_details_clean(client, vm_id, disk_id):
+    """Get clean disk information without Unknown values."""
+    try:
+        disk_info = client.vcenter.vm.hardware.Disk.get(vm=vm_id, disk=disk_id)
+        vmdk_file = safe_get_attr(safe_get_attr(disk_info, 'backing'), 'vmdk_file', 'Unknown')
+        capacity = format_bytes(safe_get_attr(disk_info, 'capacity'))
+        
+        # Build clean output
+        parts = []
+        if vmdk_file != "Unknown":
+            parts.append(f"File: {vmdk_file}")
+        if capacity != "Unknown":
+            parts.append(f"Capacity: {capacity}")
+        
+        return " | ".join(parts) if parts else "Unknown"
+        
+    except Exception as e:
+        logger.error(f"Failed to get disk details for disk {disk_id}: {str(e)}")
         return "Unknown"
 
