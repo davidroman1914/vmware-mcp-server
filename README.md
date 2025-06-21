@@ -46,30 +46,58 @@ docker-compose --profile test run test
 
 ## Configuration
 
-### Configuration File (config.yaml)
+### MCP Server Configuration (Environment Variables or config.yaml)
 
+The MCP server is configured using environment variables or a `config.yaml` file. These settings are for the MCP server container only and are not part of your Goose configuration.
+
+**Required for VMware connection:**
+- `VCENTER_HOST`: vCenter or ESXi host address
+- `VCENTER_USER`: vCenter/ESXi username
+- `VCENTER_PASSWORD`: vCenter/ESXi password
+
+**Optional:**
+- `VCENTER_DATACENTER`, `VCENTER_CLUSTER`, `VCENTER_DATASTORE`, `VCENTER_NETWORK`, `VCENTER_INSECURE`
+- `API_KEY`: (Optional) If set, the MCP server will require this key for all tool calls. If left blank, no API key is required.
+
+Example Docker Compose service environment:
 ```yaml
-# VMware Configuration
-vcenter_host: "192.168.1.100"
-vcenter_user: "administrator@vsphere.local"
-vcenter_password: "your-password"
-datacenter: "Datacenter1"
-cluster: "Cluster1"  # Optional
-datastore: "Datastore1"
-network: "VM Network"
-insecure: true  # Skip SSL verification
-
-# Server Configuration
-api_key: "your-api-key-here"
-log_file: "./logs/vmware_mcp.log"
-log_level: "INFO"
-host: "0.0.0.0"
-port: 8000
+services:
+  vmware-mcp-server:
+    environment:
+      VCENTER_HOST: "your-vcenter-host"
+      VCENTER_USER: "your-username"
+      VCENTER_PASSWORD: "your-password"
+      # Optional:
+      # VCENTER_DATACENTER: "Datacenter1"
+      # VCENTER_CLUSTER: "Cluster1"
+      # VCENTER_DATASTORE: "Datastore1"
+      # VCENTER_NETWORK: "VM Network"
+      # VCENTER_INSECURE: "true"
+      # API_KEY: "your-secret-api-key"  # Leave blank to disable API key auth
 ```
 
-### Environment Variables
+### Goose Configuration
 
-You can also configure the server using environment variables in your `docker-compose.yml` or by passing them with `docker-compose run`.
+Your Goose configuration does **not** need to include VMware credentials or the API key. Goose only needs to know how to run the MCP server (usually via Docker). The MCP server will use its own environment/config for credentials.
+
+Example Goose config:
+```yaml
+mcpServers:
+  vmware-mcp-server:
+    command: docker
+    args: [
+      "run", 
+      "--rm", 
+      "-i", 
+      "--network=host",
+      "vmware-mcp-server:latest"
+    ]
+    # No need to set VCENTER_USER, VCENTER_PASSWORD, or API_KEY here
+```
+
+**Important:** The `-i` flag (interactive) is required for stdio communication, but we don't use `-t` (allocate TTY) to avoid the "input device is not tty" error.
+
+> **Note:** When using Goose, the MCP server will use the credentials from its own environment or config.yaml, not from Goose.
 
 ## Available Tools
 
@@ -214,6 +242,41 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 3. **Permission Errors**: Ensure the user has appropriate VMware permissions
 4. **Resource Not Found**: Check datacenter, cluster, datastore, and network names
 
+### VMware Connection Error: "can only concatenate str (not NoneType) to str"
+
+This error occurs when required VMware connection parameters are missing or set to `None`. 
+
+**Solution**: Ensure these environment variables are set in your Docker container:
+
+```bash
+# Required for VMware connection
+VCENTER_HOST=your-vcenter-host
+VCENTER_USER=your-username  
+VCENTER_PASSWORD=your-password
+
+# Optional
+VCENTER_INSECURE=true  # For self-signed certificates
+```
+
+**For Docker Compose:**
+```yaml
+services:
+  vmware-mcp-server:
+    environment:
+      VCENTER_HOST: "your-vcenter-host"
+      VCENTER_USER: "your-username"
+      VCENTER_PASSWORD: "your-password"
+      VCENTER_INSECURE: "true"
+```
+
+**For Docker run:**
+```bash
+docker run -e VCENTER_HOST=your-host \
+           -e VCENTER_USER=your-user \
+           -e VCENTER_PASSWORD=your-password \
+           vmware-mcp-server:latest
+```
+
 ### Logs
 
 Check the logs for detailed error information:
@@ -270,12 +333,17 @@ This MCP server is designed to work with AI assistants like Goose through the Mo
    mcpServers:
      vmware-mcp-server:
        command: docker
-       args: ["run", "--rm", "-i", "vmware-mcp-server:latest"]
+       args: [
+         "run", 
+         "--rm", 
+         "-i", 
+         "--network=host",
+         "vmware-mcp-server:latest"
+       ]
        env:
          VCENTER_HOST: "your-vcenter-host"
          VCENTER_USER: "your-username"
          VCENTER_PASSWORD: "your-password"
-         API_KEY: "your-api-key"
    ```
 
 ### Example Prompts and Responses
