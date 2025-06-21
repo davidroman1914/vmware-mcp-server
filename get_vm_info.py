@@ -1,7 +1,11 @@
 import os
 import requests
 import urllib3
+import logging
 from vmware.vapi.vsphere.client import create_vsphere_client
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def get_vsphere_client():
     """Get vSphere client with proper configuration."""
@@ -11,7 +15,8 @@ def get_vsphere_client():
     insecure = os.getenv("VCENTER_INSECURE", "false").lower() == "true"
 
     if not all([host, user, pwd]):
-        raise EnvironmentError("Missing VCENTER_* env vars")
+        missing = [k for k, v in [("VCENTER_HOST", host), ("VCENTER_USER", user), ("VCENTER_PASSWORD", pwd)] if not v]
+        raise EnvironmentError(f"Missing: {', '.join(missing)}")
 
     session = requests.Session()
     session.verify = not insecure
@@ -19,12 +24,12 @@ def get_vsphere_client():
 
     return create_vsphere_client(server=host, username=user, password=pwd, session=session)
 
-def safe_api_call(func, error_msg):
-    """Safely execute API call and return formatted result or error."""
+def safe_get_attr(obj, attr_name, default="Not available"):
+    """Safely get attribute from object with fallback."""
     try:
-        return func(), None
-    except Exception as e:
-        return None, f"❌ {error_msg}: {str(e)}"
+        return getattr(obj, attr_name) if hasattr(obj, attr_name) else default
+    except:
+        return default
 
 def get_vm_info_text(vm_id: str) -> str:
     """Get VM information as formatted text string for MCP server."""
@@ -38,54 +43,55 @@ def get_vm_info_text(vm_id: str) -> str:
                 'name': 'Guest Identity',
                 'call': lambda: client.vcenter.vm.guest.Identity.get(vm_id),
                 'format': lambda data: [
-                    f"Host Name         : {data.name}",
-                    f"Ip Address        : {data.ip_address}",
-                    f"Guest OS          : {data.guest_os}"
+                    f"Host Name         : {safe_get_attr(data, 'name')}",
+                    f"Ip Address        : {safe_get_attr(data, 'ip_address')}",
+                    f"Guest OS          : {safe_get_attr(data, 'guest_os')}"
                 ]
             },
             {
                 'name': 'Power State',
                 'call': lambda: client.vcenter.vm.Power.get(vm_id),
-                'format': lambda data: [f"Power State       : {data.state.name}"]
+                'format': lambda data: [f"Power State       : {safe_get_attr(safe_get_attr(data, 'state'), 'name', 'Unknown')}"]
             },
             {
                 'name': 'VM Info',
                 'call': lambda: client.vcenter.VM.get(vm_id),
                 'format': lambda data: [
-                    f"Name              : {data.name}",
-                    f"Guest OS          : {data.guest_OS or 'Not available'}"
+                    f"Name              : {safe_get_attr(data, 'name')}",
+                    f"Guest OS          : {safe_get_attr(data, 'guest_OS')}"
                 ]
             },
             {
                 'name': 'Memory',
                 'call': lambda: client.vcenter.vm.hardware.Memory.get(vm_id),
                 'format': lambda data: [
-                    f"Size MiB          : {data.size_MiB}",
-                    f"Hot Add Enabled   : {data.hot_add_enabled}"
+                    f"Size MiB          : {safe_get_attr(data, 'size_MiB')}",
+                    f"Hot Add Enabled   : {safe_get_attr(data, 'hot_add_enabled')}"
                 ]
             },
             {
                 'name': 'CPU',
                 'call': lambda: client.vcenter.vm.hardware.Cpu.get(vm_id),
                 'format': lambda data: [
-                    f"Count             : {data.count}",
-                    f"Hot Add Enabled   : {data.hot_add_enabled}"
+                    f"Count             : {safe_get_attr(data, 'count')}",
+                    f"Hot Add Enabled   : {safe_get_attr(data, 'hot_add_enabled')}"
                 ]
             }
         ]
         
         # Process each API call
         for api_call in api_calls:
-            data, error = safe_api_call(api_call['call'], f"Failed to get {api_call['name'].lower()}")
-            
-            if data:
+            try:
+                data = api_call['call']()
                 section_lines = [f"---- {api_call['name']} ----"] + api_call['format'](data)
                 sections.append("\n".join(section_lines))
-            else:
-                sections.append(error)
+            except Exception as e:
+                logger.error(f"Failed to get {api_call['name'].lower()}: {str(e)}")
+                sections.append(f"❌ Failed to get {api_call['name'].lower()}: {str(e)}")
         
         return "\n\n".join(sections)
         
     except Exception as e:
+        logger.error(f"Failed to connect to vCenter: {str(e)}")
         return f"❌ Failed to connect to vCenter: {str(e)}"
 
