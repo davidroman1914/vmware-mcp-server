@@ -5,7 +5,10 @@ from helpers import (
     format_bytes, 
     get_vm_by_id, 
     get_network_name,
-    get_vm_placement_info
+    get_resource_pool_name,
+    get_datastore_name,
+    get_folder_name,
+    get_cluster_name
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -118,22 +121,51 @@ def get_vm_info_text(vm_id: str) -> str:
         except Exception as e:
             logger.error(f"Failed to get CPU info: {str(e)}")
         
-        # Placement Information
+        # Placement Information - Let's see what's actually available
         try:
-            placement_info = get_vm_placement_info(client, vm_id)
+            # Get the full VM object to inspect
+            vm_full = client.vcenter.VM.get(vm_id)
+            logger.info(f"=== VM Object Inspection for {vm_id} ===")
+            attrs = [attr for attr in dir(vm_full) if not attr.startswith('_')]
+            logger.info(f"Available VM attributes: {attrs}")
+            
+            placement_info = {}
+            
+            # Check for common placement attributes
+            for attr in ['resource_pool', 'datastore', 'folder', 'cluster', 'host', 'parent']:
+                if hasattr(vm_full, attr):
+                    value = getattr(vm_full, attr)
+                    logger.info(f"  {attr}: {value} (type: {type(value).__name__})")
+                    if value:
+                        placement_info[attr] = value
+            
+            # If we found any placement info, try to resolve names
             if placement_info:
                 placement_lines = ["### Placement Information"]
-                if placement_info.get('resource_pool') and placement_info['resource_pool'] != "Unknown":
-                    placement_lines.append(f"- **Resource Pool:** {placement_info['resource_pool']}")
-                if placement_info.get('datastore') and placement_info['datastore'] != "Unknown":
-                    placement_lines.append(f"- **Datastore:** {placement_info['datastore']}")
-                if placement_info.get('folder') and placement_info['folder'] != "Unknown":
-                    placement_lines.append(f"- **Folder:** {placement_info['folder']}")
-                if placement_info.get('cluster') and placement_info['cluster'] != "Unknown":
-                    placement_lines.append(f"- **Cluster:** {placement_info['cluster']}")
+                
+                if 'resource_pool' in placement_info:
+                    rp_name = get_resource_pool_name(client, placement_info['resource_pool'])
+                    if rp_name != "Unknown":
+                        placement_lines.append(f"- **Resource Pool:** {rp_name}")
+                
+                if 'datastore' in placement_info:
+                    ds_name = get_datastore_name(client, placement_info['datastore'])
+                    if ds_name != "Unknown":
+                        placement_lines.append(f"- **Datastore:** {ds_name}")
+                
+                if 'folder' in placement_info:
+                    folder_name = get_folder_name(client, placement_info['folder'])
+                    if folder_name != "Unknown":
+                        placement_lines.append(f"- **Folder:** {folder_name}")
+                
+                if 'cluster' in placement_info:
+                    cluster_name = get_cluster_name(client, placement_info['cluster'])
+                    if cluster_name != "Unknown":
+                        placement_lines.append(f"- **Cluster:** {cluster_name}")
                 
                 if len(placement_lines) > 1:  # More than just the header
                     sections.append("\n".join(placement_lines))
+                    
         except Exception as e:
             logger.error(f"Failed to get placement info: {str(e)}")
         

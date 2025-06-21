@@ -187,7 +187,7 @@ def get_vm_runtime_info(client, vm_id):
         return {}
 
 def get_vm_placement_info(client, vm_id):
-    """Get VM placement information including resource pool, datastore, folder, and cluster."""
+    """Get VM placement information for existing VMs."""
     try:
         vm_info = client.vcenter.VM.get(vm_id)
         
@@ -205,51 +205,69 @@ def get_vm_placement_info(client, vm_id):
         
         placement_info = {}
         
-        # Try different possible attribute names for resource pool
-        resource_pool_id = None
-        for attr_name in ['resource_pool', 'resourcePool', 'resource_pool_id']:
-            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
-                resource_pool_id = getattr(vm_info, attr_name)
-                break
+        # Try to get placement info from VM summary
+        try:
+            # Check if there's a summary or info method
+            if hasattr(vm_info, 'summary'):
+                summary = vm_info.summary
+                logger.info(f"VM Summary attributes: {[attr for attr in dir(summary) if not attr.startswith('_')]}")
+                
+                # Check for placement info in summary
+                for attr in ['resource_pool', 'datastore', 'folder', 'cluster', 'host']:
+                    if hasattr(summary, attr):
+                        value = getattr(summary, attr)
+                        if value:
+                            placement_info[attr] = value
+                            logger.info(f"Found {attr} in summary: {value}")
+        except Exception as e:
+            logger.error(f"Failed to get VM summary: {str(e)}")
         
-        if resource_pool_id:
-            placement_info['resource_pool'] = get_resource_pool_name(client, resource_pool_id)
+        # Try to get runtime info which might have host/cluster info
+        try:
+            runtime_info = client.vcenter.vm.Power.get(vm_id)
+            logger.info(f"Runtime info attributes: {[attr for attr in dir(runtime_info) if not attr.startswith('_')]}")
+            
+            # Check for host info in runtime
+            if hasattr(runtime_info, 'host') and runtime_info.host:
+                placement_info['host'] = runtime_info.host
+                logger.info(f"Found host in runtime: {runtime_info.host}")
+        except Exception as e:
+            logger.error(f"Failed to get runtime info: {str(e)}")
         
-        # Try different possible attribute names for datastore
-        datastore_id = None
-        for attr_name in ['datastore', 'datastore_id', 'storage']:
-            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
-                datastore_id = getattr(vm_info, attr_name)
-                break
+        # Try to get guest identity which might have host info
+        try:
+            guest_info = client.vcenter.vm.guest.Identity.get(vm_id)
+            logger.info(f"Guest info attributes: {[attr for attr in dir(guest_info) if not attr.startswith('_')]}")
+        except Exception as e:
+            logger.error(f"Failed to get guest info: {str(e)}")
         
-        if datastore_id:
-            placement_info['datastore'] = get_datastore_name(client, datastore_id)
+        # If we found any placement info, try to resolve names
+        resolved_info = {}
+        for key, value in placement_info.items():
+            if key == 'resource_pool':
+                resolved_info['resource_pool'] = get_resource_pool_name(client, value)
+            elif key == 'datastore':
+                resolved_info['datastore'] = get_datastore_name(client, value)
+            elif key == 'folder':
+                resolved_info['folder'] = get_folder_name(client, value)
+            elif key == 'cluster':
+                resolved_info['cluster'] = get_cluster_name(client, value)
+            elif key == 'host':
+                # Try to get host name
+                try:
+                    from com.vmware.vcenter_client import Host
+                    filter_spec = Host.FilterSpec(hosts=set([value]))
+                    hosts = client.vcenter.Host.list(filter=filter_spec)
+                    if hosts:
+                        resolved_info['host'] = hosts[0].name
+                    else:
+                        resolved_info['host'] = value
+                except Exception as e:
+                    logger.error(f"Failed to get host name: {str(e)}")
+                    resolved_info['host'] = value
         
-        # Try different possible attribute names for folder
-        folder_id = None
-        for attr_name in ['folder', 'folder_id', 'parent_folder']:
-            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
-                folder_id = getattr(vm_info, attr_name)
-                break
-        
-        if folder_id:
-            placement_info['folder'] = get_folder_name(client, folder_id)
-        
-        # Try different possible attribute names for cluster
-        cluster_id = None
-        for attr_name in ['cluster', 'cluster_id', 'compute_resource']:
-            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
-                cluster_id = getattr(vm_info, attr_name)
-                break
-        
-        if cluster_id:
-            placement_info['cluster'] = get_cluster_name(client, cluster_id)
-        
-        # Also get runtime info for additional placement details
-        runtime_info = get_vm_runtime_info(client, vm_id)
-        
-        logger.info(f"Placement info found: {placement_info}")
-        return placement_info
+        logger.info(f"Resolved placement info: {resolved_info}")
+        return resolved_info
         
     except Exception as e:
         logger.error(f"Failed to get VM placement info for {vm_id}: {str(e)}")
