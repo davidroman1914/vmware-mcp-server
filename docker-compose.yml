@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  esxi-mcp-server:
+  vmware-mcp-server:
     build: .
-    container_name: esxi-mcp-server
+    container_name: vmware-mcp-server
     environment:
       # VMware Configuration
       - VCENTER_HOST=${VCENTER_HOST:-192.168.1.100}
@@ -40,7 +40,7 @@ services:
   # Optional: Add a test service for development
   test:
     build: .
-    container_name: esxi-mcp-server-test
+    container_name: vmware-mcp-server-test
     environment:
       - VCENTER_HOST=test-host
       - VCENTER_USER=test-user

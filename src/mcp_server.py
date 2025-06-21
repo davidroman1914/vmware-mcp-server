@@ -528,7 +528,7 @@ async def create_server(config: Config) -> Server:
     """Create and configure the MCP server."""
     esxi_server = ESXiMCPServer(config)
     
-    server = Server("esxi-mcp-server")
+    server = Server("vmware-mcp-server")
     
     @server.list_tools()
     async def handle_list_tools(request: ListToolsRequest) -> ListToolsResult:

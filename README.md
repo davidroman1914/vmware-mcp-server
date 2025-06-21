@@ -18,7 +18,7 @@ A Model Context Protocol (MCP) server for managing VMware ESXi/vSphere environme
 ### 1. Clone the repository
 ```bash
 git clone <repository-url>
-cd esxi-mcp-server
+cd vmware-mcp-server
 ```
 
 ### 2. Create configuration file
@@ -166,7 +166,7 @@ docker-compose down --remove-orphans
 ## Project Structure
 
 ```
-esxi-mcp-server/
+vmware-mcp-server/
 ├── src/                    # Source code
 │   ├── __init__.py
 │   ├── __main__.py        # Main entry point
@@ -220,7 +220,7 @@ Check the logs for detailed error information:
 
 ```bash
 # View Docker logs
-docker logs esxi-mcp-server
+docker logs vmware-mcp-server
 
 # View application logs
 tail -f logs/vmware_mcp.log
@@ -268,9 +268,9 @@ This MCP server is designed to work with AI assistants like Goose through the Mo
    ```yaml
    # In your Goose configuration
    mcpServers:
-     esxi-vmware:
+     vmware-mcp-server:
        command: docker
-       args: ["run", "--rm", "-i", "esxi-mcp-server:latest"]
+       args: ["run", "--rm", "-i", "vmware-mcp-server:latest"]
        env:
          VCENTER_HOST: "your-vcenter-host"
          VCENTER_USER: "your-username"
