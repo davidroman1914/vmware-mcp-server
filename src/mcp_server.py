@@ -568,6 +568,7 @@ class ESXiMCPServer:
                 except Exception as e:
                     performance_text = f"Performance data unavailable: {e}"
                 
+                # Create a proper Resource object
                 resource = Resource(
                     uri=f"vm://{vm.name}",
                     name=vm.name,
@@ -590,7 +591,12 @@ class ESXiMCPServer:
                 )
                 resources.append(resource)
             
-            return ListResourcesResult(resources=resources)
+            # Return proper ListResourcesResult with correct structure
+            return ListResourcesResult(
+                resources=resources,
+                _meta={"total_count": len(resources)},
+                nextCursor=None
+            )
         except Exception as e:
             logging.error(f"Error listing resources: {e}")
             return ListResourcesResult(resources=[])
