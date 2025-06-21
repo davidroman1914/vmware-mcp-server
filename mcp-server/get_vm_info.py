@@ -1,206 +1,128 @@
+"""
+VM Info Module
+
+Provides functions to get detailed information about VMware VMs.
+"""
+
 import logging
-from helpers import (
-    get_vsphere_client, 
-    safe_get_attr, 
-    format_bytes, 
-    get_vm_by_id, 
+from .helpers import (
+    get_vsphere_client,
+    safe_get_attr,
+    format_bytes,
+    get_vm_by_id,
     get_network_name,
-    get_resource_pool_name,
-    get_datastore_name,
-    get_folder_name,
-    get_cluster_name
+    safe_api_call
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def get_memory_info(client, vm_id):
-    """Get memory information."""
-    try:
-        memory_info = client.vcenter.vm.hardware.Memory.get(vm_id)
-        size_mib = safe_get_attr(memory_info, 'size_mib', "Not found")
-        
-        if size_mib and size_mib != "Not found":
-            try:
-                size_mb = int(size_mib)
-                if size_mb >= 1024:
-                    size_gb = size_mb / 1024
-                    return f"{size_mb} MiB ({size_gb:.1f} GB)"
-                else:
-                    return f"{size_mb} MiB"
-            except (ValueError, TypeError):
-                return f"{size_mib} MiB"
-        return "Not available"
-        
-    except Exception as e:
-        logger.error(f"Failed to get memory info: {str(e)}")
-        return "Not available"
-
-def get_network_details_clean(client, vm_id, nic_id):
-    """Get clean network information."""
-    try:
-        nic_info = client.vcenter.vm.hardware.Ethernet.get(vm=vm_id, nic=nic_id)
-        
-        # Get network name
-        backing = safe_get_attr(nic_info, 'backing', "No backing")
-        network_name = "Unknown"
-        if backing and backing != "No backing":
-            network_id = safe_get_attr(backing, 'network', "No network ID")
-            if network_id and network_id != "No network ID":
-                network_name = get_network_name(client, network_id)
-            else:
-                network_name = safe_get_attr(backing, 'network_name', 'Unknown')
-        
-        # Build clean output
-        parts = []
-        if network_name != "Unknown":
-            parts.append(f"Network: {network_name}")
-        if safe_get_attr(nic_info, 'mac_address', 'Unknown') != "Unknown":
-            parts.append(f"MAC: {safe_get_attr(nic_info, 'mac_address')}")
-        if safe_get_attr(nic_info, 'mac_type', 'Unknown') != "Unknown":
-            parts.append(f"Type: {safe_get_attr(nic_info, 'mac_type')}")
-        if safe_get_attr(nic_info, 'start_connected', 'Unknown') != "Unknown":
-            parts.append(f"Connected: {safe_get_attr(nic_info, 'start_connected')}")
-        
-        return " | ".join(parts) if parts else "Unknown"
-        
-    except Exception as e:
-        logger.error(f"Failed to get network details: {str(e)}")
-        return "Unknown"
-
-def get_disk_details_clean(client, vm_id, disk_id):
-    """Get clean disk information."""
-    try:
-        disk_info = client.vcenter.vm.hardware.Disk.get(vm=vm_id, disk=disk_id)
-        vmdk_file = safe_get_attr(safe_get_attr(disk_info, 'backing'), 'vmdk_file', 'Unknown')
-        capacity = format_bytes(safe_get_attr(disk_info, 'capacity'))
-        
-        parts = []
-        if vmdk_file != "Unknown":
-            parts.append(f"File: {vmdk_file}")
-        if capacity != "Unknown":
-            parts.append(f"Capacity: {capacity}")
-        
-        return " | ".join(parts) if parts else "Unknown"
-        
-    except Exception as e:
-        logger.error(f"Failed to get disk details: {str(e)}")
-        return "Unknown"
-
 def get_vm_info_text(vm_id: str) -> str:
-    """Get VM information as formatted text string for MCP server."""
+    """Get detailed information about a specific VM as formatted text."""
     try:
         client = get_vsphere_client()
         
-        # Verify VM exists
-        vm_info = get_vm_by_id(client, vm_id)
-        if not vm_info:
-            return f"❌ VM with ID '{vm_id}' not found"
+        # Get VM details
+        vm, error = safe_api_call(
+            lambda: get_vm_by_id(client, vm_id),
+            f"Failed to get VM details for {vm_id}"
+        )
+        if error:
+            return error
         
-        sections = []
+        if not vm:
+            return f"❌ VM with ID {vm_id} not found"
         
-        # Basic Information
-        sections.append(f"### Basic Information\n- **Name:** {safe_get_attr(vm_info, 'name')}\n- **ID:** {safe_get_attr(vm_info, 'vm')}")
+        # Get power state
+        power_state, error = safe_api_call(
+            lambda: client.vcenter.vm.Power.get(vm.vm),
+            f"Failed to get power state for {vm_id}"
+        )
+        if error:
+            power_state = None
         
-        # Power State
-        try:
-            power_info = client.vcenter.vm.Power.get(vm_id)
-            sections.append(f"### Power State\n- **Power State:** {safe_get_attr(power_info, 'state')}")
-        except Exception as e:
-            logger.error(f"Failed to get power state: {str(e)}")
+        # Get guest info
+        guest_info, error = safe_api_call(
+            lambda: client.vcenter.vm.guest.Identity.get(vm.vm),
+            f"Failed to get guest info for {vm_id}"
+        )
         
-        # Memory
-        memory_size = get_memory_info(client, vm_id)
-        if memory_size != "Not available":
-            sections.append(f"### Memory\n- **Memory:** {memory_size}")
+        # Get hardware info
+        hardware_info, error = safe_api_call(
+            lambda: client.vcenter.vm.hardware.Cpu.get(vm.vm),
+            f"Failed to get CPU info for {vm_id}"
+        )
         
-        # CPU
-        try:
-            cpu_info = client.vcenter.vm.hardware.Cpu.get(vm_id)
-            sections.append(f"### CPU\n- **CPU:** {safe_get_attr(cpu_info, 'count')} cores")
-        except Exception as e:
-            logger.error(f"Failed to get CPU info: {str(e)}")
+        # Get memory info
+        memory_info, error = safe_api_call(
+            lambda: client.vcenter.vm.hardware.Memory.get(vm.vm),
+            f"Failed to get memory info for {vm_id}"
+        )
         
-        # Placement Information - Let's see what's actually available
-        try:
-            # Get the full VM object to inspect
-            vm_full = client.vcenter.VM.get(vm_id)
-            logger.info(f"=== VM Object Inspection for {vm_id} ===")
-            attrs = [attr for attr in dir(vm_full) if not attr.startswith('_')]
-            logger.info(f"Available VM attributes: {attrs}")
-            
-            placement_info = {}
-            
-            # Check for common placement attributes
-            for attr in ['resource_pool', 'datastore', 'folder', 'cluster', 'host', 'parent']:
-                if hasattr(vm_full, attr):
-                    value = getattr(vm_full, attr)
-                    logger.info(f"  {attr}: {value} (type: {type(value).__name__})")
-                    if value:
-                        placement_info[attr] = value
-            
-            # If we found any placement info, try to resolve names
-            if placement_info:
-                placement_lines = ["### Placement Information"]
-                
-                if 'resource_pool' in placement_info:
-                    rp_name = get_resource_pool_name(client, placement_info['resource_pool'])
-                    if rp_name != "Unknown":
-                        placement_lines.append(f"- **Resource Pool:** {rp_name}")
-                
-                if 'datastore' in placement_info:
-                    ds_name = get_datastore_name(client, placement_info['datastore'])
-                    if ds_name != "Unknown":
-                        placement_lines.append(f"- **Datastore:** {ds_name}")
-                
-                if 'folder' in placement_info:
-                    folder_name = get_folder_name(client, placement_info['folder'])
-                    if folder_name != "Unknown":
-                        placement_lines.append(f"- **Folder:** {folder_name}")
-                
-                if 'cluster' in placement_info:
-                    cluster_name = get_cluster_name(client, placement_info['cluster'])
-                    if cluster_name != "Unknown":
-                        placement_lines.append(f"- **Cluster:** {cluster_name}")
-                
-                if len(placement_lines) > 1:  # More than just the header
-                    sections.append("\n".join(placement_lines))
-                    
-        except Exception as e:
-            logger.error(f"Failed to get placement info: {str(e)}")
+        # Get disk info
+        disks, error = safe_api_call(
+            lambda: client.vcenter.vm.hardware.Disk.list(vm.vm),
+            f"Failed to get disk info for {vm_id}"
+        )
         
-        # Network Adapters
-        try:
-            network_adapters = client.vcenter.vm.hardware.Ethernet.list(vm_id)
-            if network_adapters:
-                network_lines = [f"### Network Adapters\n- **Network Adapters:** {len(network_adapters)}"]
-                for adapter in network_adapters:
-                    details = get_network_details_clean(client, vm_id, safe_get_attr(adapter, 'nic'))
-                    if details != "Unknown":
-                        network_lines.append(f"  - **{details}**")
-                if len(network_lines) > 1:  # More than just the count
-                    sections.append("\n".join(network_lines))
-        except Exception as e:
-            logger.error(f"Failed to get network adapters: {str(e)}")
+        # Get network adapters
+        nics, error = safe_api_call(
+            lambda: client.vcenter.vm.hardware.Ethernet.list(vm.vm),
+            f"Failed to get network adapters for {vm_id}"
+        )
         
-        # Disks
-        try:
-            disks = client.vcenter.vm.hardware.Disk.list(vm_id)
-            if disks:
-                disk_lines = [f"### Disks\n- **Disks:** {len(disks)}"]
-                for disk in disks:
-                    details = get_disk_details_clean(client, vm_id, safe_get_attr(disk, 'disk'))
-                    if details != "Unknown":
-                        disk_lines.append(f"  - **{details}**")
-                if len(disk_lines) > 1:  # More than just the count
-                    sections.append("\n".join(disk_lines))
-        except Exception as e:
-            logger.error(f"Failed to get disks: {str(e)}")
+        # Build output
+        output = []
+        output.append(f"📋 **VM Information: {vm.name}**")
+        output.append(f"**ID:** {vm.vm}")
+        output.append(f"**Power State:** {power_state.state if power_state else 'Unknown'}")
         
-        result = "\n\n".join(sections)
-        return str(result) if result else "No VM information available"
+        # Guest OS info
+        if guest_info:
+            output.append(f"**Guest OS:** {safe_get_attr(guest_info, 'full_name', 'Unknown')}")
+            output.append(f"**Guest Family:** {safe_get_attr(guest_info, 'family', 'Unknown')}")
+            output.append(f"**Guest Version:** {safe_get_attr(guest_info, 'version', 'Unknown')}")
+        
+        # Hardware info
+        if hardware_info:
+            output.append(f"**CPU Cores:** {safe_get_attr(hardware_info, 'cores_per_socket', 'Unknown')}")
+            output.append(f"**CPU Sockets:** {safe_get_attr(hardware_info, 'count', 'Unknown')}")
+        
+        if memory_info:
+            size_mib = safe_get_attr(memory_info, 'size_mib', 'Unknown')
+            if size_mib != 'Unknown':
+                try:
+                    size_bytes = int(size_mib) * 1024 * 1024
+                    output.append(f"**Memory:** {format_bytes(size_bytes)}")
+                except (ValueError, TypeError):
+                    output.append(f"**Memory:** {size_mib} MiB")
+        
+        # Disk info
+        if disks:
+            output.append("\n💾 **Disks:**")
+            for disk in disks:
+                capacity = safe_get_attr(disk, 'capacity', 'Unknown')
+                disk_type = safe_get_attr(disk, 'type', 'Unknown')
+                if capacity != 'Unknown':
+                    output.append(f"  • {format_bytes(capacity)} ({disk_type})")
+                else:
+                    output.append(f"  • {disk_type}")
+        
+        # Network adapters
+        if nics:
+            output.append("\n🌐 **Network Adapters:**")
+            for nic in nics:
+                backing = safe_get_attr(nic, 'backing', 'Unknown')
+                if isinstance(backing, dict):
+                    network_id = backing.get('network', 'Unknown')
+                else:
+                    network_id = 'Unknown'
+                network_name = get_network_name(client, network_id)
+                mac_address = safe_get_attr(nic, 'mac_address', 'Unknown')
+                output.append(f"  • {network_name} (MAC: {mac_address})")
+        
+        return "\n".join(output)
         
     except Exception as e:
-        logger.error(f"Failed to connect to vCenter: {str(e)}")
-        return f"❌ Failed to connect to vCenter: {str(e)}"
+        logger.error(f"Error getting VM info: {str(e)}")
+        return f"❌ Error retrieving VM information: {str(e)}"
 
