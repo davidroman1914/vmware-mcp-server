@@ -39,6 +39,25 @@ def safe_get_attr(obj, attr_name, default="Not available"):
     except:
         return default
 
+def inspect_object(obj, name):
+    """Inspect object structure and log details."""
+    logger.info(f"=== {name} Object Inspection ===")
+    logger.info(f"Type: {type(obj).__name__}")
+    
+    # Get all public attributes
+    attrs = [attr for attr in dir(obj) if not attr.startswith('_')]
+    logger.info(f"Available attributes: {attrs}")
+    
+    # Try to get values for key attributes
+    for attr in attrs:
+        try:
+            value = getattr(obj, attr)
+            logger.info(f"  {attr}: {value} (type: {type(value).__name__})")
+        except Exception as e:
+            logger.info(f"  {attr}: Error accessing - {str(e)}")
+    
+    logger.info(f"=== End {name} ===")
+
 def obj_to_dict(obj):
     """Convert object to dictionary for JSON logging."""
     try:
@@ -96,6 +115,24 @@ def get_vm_info_text(vm_id: str) -> str:
                     f"Count             : {safe_get_attr(data, 'count')}",
                     f"Hot Add Enabled   : {safe_get_attr(data, 'hot_add_enabled')}"
                 ]
+            },
+            {
+                'name': 'Network Adapters',
+                'call': lambda: client.vcenter.vm.hardware.Ethernet.list(vm_id),
+                'format': lambda data: [
+                    f"Count             : {len(data) if data else 0}",
+                    *[f"Adapter {i+1}      : {safe_get_attr(adapter, 'nic')} - {safe_get_attr(safe_get_attr(adapter, 'backing'), 'network', 'Unknown')}" 
+                      for i, adapter in enumerate(data or [])]
+                ]
+            },
+            {
+                'name': 'Disks',
+                'call': lambda: client.vcenter.vm.hardware.Disk.list(vm_id),
+                'format': lambda data: [
+                    f"Count             : {len(data) if data else 0}",
+                    *[f"Disk {i+1}        : {safe_get_attr(disk, 'disk')} - {safe_get_attr(safe_get_attr(disk, 'backing'), 'vmdk_file', 'Unknown')}" 
+                      for i, disk in enumerate(data or [])]
+                ]
             }
         ]
         
@@ -104,10 +141,8 @@ def get_vm_info_text(vm_id: str) -> str:
             try:
                 data = api_call['call']()
                 
-                # Log the actual JSON data structure
-                logger.info(f"=== {api_call['name']} JSON Data ===")
-                logger.info(json.dumps(obj_to_dict(data), indent=2, default=str))
-                logger.info(f"=== End {api_call['name']} ===")
+                # Inspect the object structure
+                inspect_object(data, api_call['name'])
                 
                 section_lines = [f"---- {api_call['name']} ----"] + api_call['format'](data)
                 sections.append("\n".join(section_lines))
