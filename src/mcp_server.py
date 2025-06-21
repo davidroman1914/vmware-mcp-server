@@ -150,12 +150,17 @@ class VMwareMCPServer:
     async def run(self):
         """Run the MCP server with explicit initialization."""
         try:
-            # Create explicit initialization options
+            # Create explicit initialization options with required capabilities
             from mcp.server.models import InitializationOptions
             
             init_options = InitializationOptions(
                 server_name="vmware-mcp-server",
-                server_version="1.0.0"
+                server_version="1.0.0",
+                capabilities={
+                    "listResources": True,
+                    "listTools": True,
+                    "callTool": True
+                }
             )
             
             # Use stdio_server with explicit options
