@@ -1,11 +1,12 @@
 # list_vm.py
 
-from vmware.vapi.vsphere.client import create_vsphere_client
 import os
 import requests
 import urllib3
+from vmware.vapi.vsphere.client import create_vsphere_client
 
 def get_vsphere_client():
+    """Get vSphere client with proper configuration."""
     host = os.getenv("VCENTER_HOST")
     user = os.getenv("VCENTER_USER")
     pwd = os.getenv("VCENTER_PASSWORD")
@@ -20,13 +21,34 @@ def get_vsphere_client():
 
     return create_vsphere_client(server=host, username=user, password=pwd, session=session)
 
-def list_vms_text():
+def safe_api_call(func, error_msg):
+    """Safely execute API call and return formatted result or error."""
+    try:
+        return func(), None
+    except Exception as e:
+        return None, f"❌ {error_msg}: {str(e)}"
+
+def list_vms_text() -> str:
+    """List all VMs as formatted text string for MCP server."""
     try:
         client = get_vsphere_client()
-        vms = client.vcenter.VM.list()
-        if not vms:
-            return "No VMs found."
-        return "\n".join(f"{vm.name} ({vm.vm})" for vm in vms)
+        
+        # Define the API call and formatting
+        api_call = {
+            'call': lambda: client.vcenter.VM.list(),
+            'format': lambda vms: [
+                f"{vm.name} ({vm.vm})" for vm in vms
+            ] if vms else ["No VMs found."]
+        }
+        
+        # Execute the API call
+        data, error = safe_api_call(api_call['call'], "Failed to list VMs")
+        
+        if data:
+            return "\n".join(api_call['format'](data))
+        else:
+            return error or "❌ Unknown error occurred"
+            
     except Exception as e:
-        return f"Error listing VMs: {str(e)}"
+        return f"❌ Failed to connect to vCenter: {str(e)}"
 

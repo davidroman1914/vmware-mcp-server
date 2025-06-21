@@ -3,60 +3,89 @@ import requests
 import urllib3
 from vmware.vapi.vsphere.client import create_vsphere_client
 
-def get_vm_info_text(vm_id: str) -> str:
+def get_vsphere_client():
+    """Get vSphere client with proper configuration."""
     host = os.getenv("VCENTER_HOST")
     user = os.getenv("VCENTER_USER")
     pwd = os.getenv("VCENTER_PASSWORD")
     insecure = os.getenv("VCENTER_INSECURE", "false").lower() == "true"
 
+    if not all([host, user, pwd]):
+        raise EnvironmentError("Missing VCENTER_* env vars")
+
     session = requests.Session()
     session.verify = not insecure
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    client = create_vsphere_client(server=host, username=user, password=pwd, session=session)
-    report = []
+    return create_vsphere_client(server=host, username=user, password=pwd, session=session)
 
+def safe_api_call(func, error_msg):
+    """Safely execute API call and return formatted result or error."""
     try:
-        power = client.vcenter.vm.Power.get(vm_id)
-        hardware = client.vcenter.vm.hardware.Memory.get(vm_id)
-        cpu = client.vcenter.vm.hardware.Cpu.get(vm_id)
-        identity = client.vcenter.vm.guest.Identity.get(vm_id)
-        summary = client.vcenter.VM.get(vm_id)
-
-        report.append("---- Guest Identity ----")
-        report.append(f"Host Name         : {identity.name}")
-        report.append(f"Ip Address        : {identity.ip_address}")
-        report.append(f"Name              : {identity.guest_os}\n")
-
+        return func(), None
     except Exception as e:
-        report.append("❌ Failed to get guest identity: " + str(e))
+        return None, f"❌ {error_msg}: {str(e)}"
 
+def get_vm_info_text(vm_id: str) -> str:
+    """Get VM information as formatted text string for MCP server."""
     try:
-        report.append("---- Power State ----")
-        report.append(f"Power State     : {power.state.name}\n")
-    except:
-        report.append("❌ Failed to get power state")
-
-    try:
-        report.append("---- VM Info ----")
-        report.append(f"Name              : {summary.name}")
-        report.append(f"Guest Os          : {summary.guest_OS or '❌ Not available'}\n")
-    except:
-        report.append("❌ Failed to get VM info")
-
-    try:
-        report.append("---- Memory ----")
-        report.append(f"Size Mib          : {hardware.size_MiB}")
-        report.append(f"Hot Add Enabled   : {hardware.hot_add_enabled}\n")
-    except:
-        report.append("❌ Failed to get memory info")
-
-    try:
-        report.append("---- CPU ----")
-        report.append(f"Count             : {cpu.count}")
-        report.append(f"Hot Add Enabled   : {cpu.hot_add_enabled}")
-    except:
-        report.append("❌ Failed to get CPU info")
-
-    return "\n".join(report)
+        client = get_vsphere_client()
+        sections = []
+        
+        # Define API calls and their formatting
+        api_calls = [
+            {
+                'name': 'Guest Identity',
+                'call': lambda: client.vcenter.vm.guest.Identity.get(vm_id),
+                'format': lambda data: [
+                    f"Host Name         : {data.name}",
+                    f"Ip Address        : {data.ip_address}",
+                    f"Guest OS          : {data.guest_os}"
+                ]
+            },
+            {
+                'name': 'Power State',
+                'call': lambda: client.vcenter.vm.Power.get(vm_id),
+                'format': lambda data: [f"Power State       : {data.state.name}"]
+            },
+            {
+                'name': 'VM Info',
+                'call': lambda: client.vcenter.VM.get(vm_id),
+                'format': lambda data: [
+                    f"Name              : {data.name}",
+                    f"Guest OS          : {data.guest_OS or 'Not available'}"
+                ]
+            },
+            {
+                'name': 'Memory',
+                'call': lambda: client.vcenter.vm.hardware.Memory.get(vm_id),
+                'format': lambda data: [
+                    f"Size MiB          : {data.size_MiB}",
+                    f"Hot Add Enabled   : {data.hot_add_enabled}"
+                ]
+            },
+            {
+                'name': 'CPU',
+                'call': lambda: client.vcenter.vm.hardware.Cpu.get(vm_id),
+                'format': lambda data: [
+                    f"Count             : {data.count}",
+                    f"Hot Add Enabled   : {data.hot_add_enabled}"
+                ]
+            }
+        ]
+        
+        # Process each API call
+        for api_call in api_calls:
+            data, error = safe_api_call(api_call['call'], f"Failed to get {api_call['name'].lower()}")
+            
+            if data:
+                section_lines = [f"---- {api_call['name']} ----"] + api_call['format'](data)
+                sections.append("\n".join(section_lines))
+            else:
+                sections.append(error)
+        
+        return "\n\n".join(sections)
+        
+    except Exception as e:
+        return f"❌ Failed to connect to vCenter: {str(e)}"
 

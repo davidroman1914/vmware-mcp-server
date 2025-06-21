@@ -1,17 +1,14 @@
 version: '3.8'
 
 services:
-  vmware-vm-list:
+  vmware-mcp-server:
     build: .
     environment:
-      - VCENTER_SERVER=${VCENTER_SERVER}
-      - VCENTER_USERNAME=${VCENTER_USERNAME}
+      - VCENTER_HOST=${VCENTER_HOST}
+      - VCENTER_USER=${VCENTER_USER}
       - VCENTER_PASSWORD=${VCENTER_PASSWORD}
-    command: >
-      python list_vms.py
-      --server ${VCENTER_SERVER}
-      --username ${VCENTER_USERNAME}
-      --password ${VCENTER_PASSWORD}
-      --skip-verification
+      - VCENTER_INSECURE=${VCENTER_INSECURE:-false}
+    stdin_open: true
+    tty: true
     volumes:
       - ./logs:/app/logs 
