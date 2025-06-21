@@ -25,18 +25,40 @@ def get_vsphere_client():
 
     return create_vsphere_client(server=host, username=user, password=pwd, session=session)
 
+def format_bytes(bytes_value):
+    """Format bytes in human-readable format."""
+    if bytes_value is None:
+        return "Unknown"
+    try:
+        bytes_value = int(bytes_value)
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if bytes_value < 1024.0:
+                return f"{bytes_value:.1f} {unit}"
+            bytes_value /= 1024.0
+        return f"{bytes_value:.1f} PB"
+    except:
+        return str(bytes_value)
+
 def safe_get_attr(obj, attr_name, default="Not available"):
     """Safely get attribute from object with fallback."""
     try:
         if hasattr(obj, attr_name):
             value = getattr(obj, attr_name)
-            return value if value is not None else default
+            # Handle enum-like objects that have a name attribute
+            if hasattr(value, 'name'):
+                return value.name
+            # Handle enum-like objects that can be converted to string
+            elif hasattr(value, '__str__'):
+                return str(value)
+            else:
+                return value if value is not None else default
         else:
             # Debug: show what attributes are actually available
             available_attrs = [attr for attr in dir(obj) if not attr.startswith('_')]
             logger.debug(f"Object {type(obj).__name__} missing '{attr_name}'. Available: {available_attrs}")
             return default
-    except:
+    except Exception as e:
+        logger.debug(f"Error accessing '{attr_name}' on {type(obj).__name__}: {str(e)}")
         return default
 
 def inspect_object(obj, name):
@@ -90,7 +112,7 @@ def get_vm_info_text(vm_id: str) -> str:
             {
                 'name': 'Power State',
                 'call': lambda: client.vcenter.vm.Power.get(vm_id),
-                'format': lambda data: [f"Power State       : {safe_get_attr(safe_get_attr(data, 'state'), 'name', 'Unknown')}"]
+                'format': lambda data: [f"Power State       : {safe_get_attr(data, 'state')}"]
             },
             {
                 'name': 'VM Info',
@@ -121,7 +143,7 @@ def get_vm_info_text(vm_id: str) -> str:
                 'call': lambda: client.vcenter.vm.hardware.Ethernet.list(vm_id),
                 'format': lambda data: [
                     f"Count             : {len(data) if data else 0}",
-                    *[f"Adapter {i+1}      : {safe_get_attr(adapter, 'nic')} - {safe_get_attr(safe_get_attr(adapter, 'backing'), 'network', 'Unknown')}" 
+                    *[f"Adapter {i+1}      : {safe_get_attr(adapter, 'nic')} - {safe_get_attr(safe_get_attr(adapter, 'backing'), 'network_name', safe_get_attr(safe_get_attr(adapter, 'backing'), 'network', 'Unknown'))}" 
                       for i, adapter in enumerate(data or [])]
                 ]
             },
@@ -130,7 +152,7 @@ def get_vm_info_text(vm_id: str) -> str:
                 'call': lambda: client.vcenter.vm.hardware.Disk.list(vm_id),
                 'format': lambda data: [
                     f"Count             : {len(data) if data else 0}",
-                    *[f"Disk {i+1}        : {safe_get_attr(disk, 'disk')} - {safe_get_attr(safe_get_attr(disk, 'backing'), 'vmdk_file', 'Unknown')}" 
+                    *[f"Disk {i+1}        : {safe_get_attr(disk, 'disk')} - {safe_get_attr(safe_get_attr(disk, 'backing'), 'vmdk_file', 'Unknown')} (Capacity: {format_bytes(safe_get_attr(disk, 'capacity'))})" 
                       for i, disk in enumerate(data or [])]
                 ]
             }
