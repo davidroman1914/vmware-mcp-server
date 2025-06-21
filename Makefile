@@ -18,11 +18,15 @@ build-base:
 
 build:
 	@echo "Building application image (using base image)..."
+	@echo "Removing existing latest tag to ensure fresh build..."
+	-docker rmi vmware-mcp-server-vmware-mcp-server:latest 2>/dev/null || true
 	docker build -t vmware-mcp-server-vmware-mcp-server:latest .
 	@echo "Application image built successfully!"
 
 build-full:
 	@echo "Building everything from scratch (no cache)..."
+	@echo "Removing existing latest tag to ensure fresh build..."
+	-docker rmi vmware-mcp-server-vmware-mcp-server:latest 2>/dev/null || true
 	docker build --no-cache -t vmware-mcp-server-vmware-mcp-server:latest .
 	@echo "Full build completed!"
 
