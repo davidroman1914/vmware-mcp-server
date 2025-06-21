@@ -542,4 +542,35 @@ async def create_server(config: Config) -> Server:
     async def handle_list_resources(request: ListResourcesRequest) -> ListResourcesResult:
         return await esxi_server.list_resources(request)
     
-    return server 
+    return server
+
+
+async def run_server(config: Config) -> None:
+    """Run the MCP server with proper initialization."""
+    from mcp.server.stdio import stdio_server
+    from mcp.server.lowlevel import NotificationOptions
+    from mcp.server.models import InitializationOptions
+    
+    server = await create_server(config)
+    
+    # Set up proper initialization options
+    init_options = InitializationOptions(
+        server_name="vmware-mcp-server",
+        server_version="1.0.0",
+        capabilities=server.get_capabilities(
+            notification_options=NotificationOptions(),
+            experimental_capabilities={},
+        ),
+    )
+    
+    # Run the server using stdio transport with proper initialization
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                init_options,
+            )
+    except Exception as e:
+        logging.error(f"Failed to run server: {e}")
+        raise 

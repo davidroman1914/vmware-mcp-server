@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from .config import Config
-from .mcp_server import create_server
+from .mcp_server import run_server
 
 
 def setup_logging(config: Config) -> None:
@@ -49,18 +49,8 @@ async def main() -> None:
         
         logging.info("Starting ESXi MCP Server")
         
-        # Create and run server
-        server = await create_server(config)
-        
-        # Run the server using stdio transport
-        from mcp.server.stdio import stdio_server
-        try:
-            # Try the context manager approach first
-            async with stdio_server(server) as stdio:
-                await stdio.run()
-        except TypeError:
-            # Fallback to direct await if context manager doesn't work
-            await stdio_server(server)
+        # Run the server using the new run_server function
+        await run_server(config)
         
     except Exception as e:
         logging.error(f"Failed to start server: {e}")
