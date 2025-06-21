@@ -1,0 +1,35 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    gcc g++ git curl && rm -rf /var/lib/apt/lists/*
+
+# Install MCP and dependencies first
+RUN pip install --no-cache-dir 'mcp[cli]>=0.3.0'
+
+# Then your specific requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Then the VMware SDK
+#RUN pip install --no-cache-dir git+https://github.com/vmware/vsphere-automation-sdk-python.git
+
+# Copy all necessary server files
+COPY server.py .
+COPY list_vm.py .
+COPY get_vm_info.py .
+
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV VCENTER_HOST=10.60.76.89
+ENV VCENTER_USER=david.roman
+ENV VCENTER_PASSWORD="iHeArTtHeJets1!"
+ENV VCENTER_INSECURE=true
+ENV DOCKER_CONTAINER=true
+
+# Start the server
+CMD ["python", "server.py"]
+
