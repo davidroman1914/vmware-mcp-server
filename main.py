@@ -1,12 +1,31 @@
 #!/usr/bin/env python3
 """
-Main entry point for ESXi MCP Server.
-This is a simple wrapper around the src module.
+Minimal VMware MCP Server entry point.
 """
-import sys
 import asyncio
+import logging
+import sys
+
+from src.mcp_server import VMwareMCPServer
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+async def main():
+    """Main entry point."""
+    server = VMwareMCPServer()
+    try:
+        await server.run()
+    except KeyboardInterrupt:
+        logging.info("Server stopped by user")
+    except Exception as e:
+        logging.error(f"Server error: {e}")
+        sys.exit(1)
+    finally:
+        server.cleanup()
 
 if __name__ == "__main__":
-    # Import and run the main module
-    from src.__main__ import main
     asyncio.run(main()) 

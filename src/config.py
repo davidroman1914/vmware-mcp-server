@@ -110,4 +110,31 @@ class Config:
         return cls(
             vmware=VMwareConfig(**vmware_data),
             server=ServerConfig(**server_data)
-        ) 
+        )
+
+
+def load_config() -> VMwareConfig:
+    """Load VMware configuration with fallback to environment variables."""
+    try:
+        # Try to load from config file first
+        config_path = Path("config.yaml")
+        if config_path.exists():
+            config = Config.from_file(config_path)
+            return config.vmware
+    except Exception as e:
+        print(f"Warning: Could not load config file: {e}")
+    
+    try:
+        # Try environment variables
+        config = Config.from_env()
+        return config.vmware
+    except Exception as e:
+        print(f"Warning: Could not load config from environment: {e}")
+    
+    # Return minimal config - will fail validation but allows server to start
+    return VMwareConfig(
+        host=os.getenv('VCENTER_HOST', ''),
+        user=os.getenv('VCENTER_USER', ''),
+        password=os.getenv('VCENTER_PASSWORD', ''),
+        insecure=os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
+    ) 
