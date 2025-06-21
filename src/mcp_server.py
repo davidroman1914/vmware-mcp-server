@@ -526,39 +526,66 @@ class ESXiMCPServer:
 
 async def create_server(config: Config) -> Server:
     """Create and configure the MCP server."""
+    logging.info("Creating ESXi MCP server instance...")
     esxi_server = ESXiMCPServer(config)
+    logging.info("ESXi MCP server instance created successfully")
     
+    logging.info("Creating MCP Server object...")
     server = Server("vmware-mcp-server")
+    logging.info("MCP Server object created successfully")
     
+    logging.info("Registering list_tools handler...")
     @server.list_tools()
     async def handle_list_tools(request: ListToolsRequest) -> ListToolsResult:
+        logging.debug("list_tools handler called")
         return await esxi_server.list_tools(request)
     
+    logging.info("Registering call_tool handler...")
     @server.call_tool()
     async def handle_call_tool(request: CallToolRequest) -> CallToolResult:
+        logging.debug("call_tool handler called")
         return await esxi_server.call_tool(request)
     
+    logging.info("Registering list_resources handler...")
     @server.list_resources()
     async def handle_list_resources(request: ListResourcesRequest) -> ListResourcesResult:
+        logging.debug("list_resources handler called")
         return await esxi_server.list_resources(request)
     
+    logging.info("All MCP server handlers registered successfully")
     return server
 
 
 async def run_server(config: Config) -> None:
     """Run the MCP server with proper initialization."""
     from mcp.server.stdio import stdio_server
+    import traceback
     
+    logging.info("Creating MCP server instance...")
     server = await create_server(config)
+    logging.info("MCP server instance created successfully")
     
     # Run the server using stdio transport with fallback handling
     try:
+        logging.info("Attempting to start stdio server with context manager...")
         # Try the context manager approach first
         async with stdio_server(server) as stdio:
+            logging.info("stdio server context manager acquired, starting server...")
             await stdio.run()
-    except TypeError:
-        # Fallback to direct await if context manager doesn't work
-        await stdio_server(server)
+            logging.info("stdio server run completed successfully")
+    except TypeError as e:
+        logging.warning(f"Context manager approach failed with TypeError: {e}")
+        logging.info("Falling back to direct await approach...")
+        try:
+            # Fallback to direct await if context manager doesn't work
+            await stdio_server(server)
+            logging.info("Direct await approach completed successfully")
+        except Exception as fallback_error:
+            logging.error(f"Fallback approach also failed: {fallback_error}")
+            logging.error(f"Fallback error traceback: {traceback.format_exc()}")
+            raise
     except Exception as e:
         logging.error(f"Failed to run server: {e}")
+        logging.error(f"Error type: {type(e).__name__}")
+        logging.error(f"Full error traceback: {traceback.format_exc()}")
         raise 
