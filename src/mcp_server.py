@@ -30,6 +30,7 @@ class Resource(BaseModel):
 
 class ListResourcesResult(BaseModel):
     resources: List[Resource]
+    nextCursor: Optional[str] = None
 
 
 class ESXiMCPServer:
@@ -556,13 +557,16 @@ class ESXiMCPServer:
         """List available resources."""
         if not self.vmware_manager:
             # Return a placeholder response to illustrate the correct format
-            return ListResourcesResult(resources=[
-                Resource(
-                    id="placeholder-vm-1",
-                    name="Example VM",
-                    status="powered_off"
-                )
-            ])
+            return ListResourcesResult(
+                resources=[
+                    Resource(
+                        id="placeholder-vm-1",
+                        name="Example VM",
+                        status="powered_off"
+                    )
+                ],
+                nextCursor=None
+            )
         
         try:
             vms = self.vmware_manager.list_vms()
@@ -578,17 +582,23 @@ class ESXiMCPServer:
                 resources.append(resource)
             
             # Return proper ListResourcesResult with correct structure
-            return ListResourcesResult(resources=resources)
+            return ListResourcesResult(
+                resources=resources,
+                nextCursor=None
+            )
         except Exception as e:
             logging.error(f"Error listing resources: {e}")
             # Return a placeholder response on error
-            return ListResourcesResult(resources=[
-                Resource(
-                    id="error-placeholder",
-                    name="Error loading VMs",
-                    status="error"
-                )
-            ])
+            return ListResourcesResult(
+                resources=[
+                    Resource(
+                        id="error-placeholder",
+                        name="Error loading VMs",
+                        status="error"
+                    )
+                ],
+                nextCursor=None
+            )
     
     def cleanup(self):
         """Cleanup resources."""
