@@ -143,10 +143,22 @@ class VMwareMCPServer:
     async def _handle_list_vms(self, arguments: dict[str, Any]) -> CallToolResult:
         """Handle list_vms tool call"""
         try:
-            server = arguments["server"]
-            username = arguments["username"]
-            password = arguments["password"]
-            skip_verification = arguments.get("skip_verification", False)
+            # Get credentials from arguments or environment variables
+            server = arguments.get("server") or os.getenv("VCENTER_SERVER")
+            username = arguments.get("username") or os.getenv("VCENTER_USERNAME")
+            password = arguments.get("password") or os.getenv("VCENTER_PASSWORD")
+            skip_verification = arguments.get("skip_verification", 
+                os.getenv("VCENTER_SKIP_VERIFICATION", "false").lower() == "true")
+
+            if not server or not username or not password:
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text="Error: Missing vCenter credentials. Please provide server, username, and password as arguments or set VCENTER_SERVER, VCENTER_USERNAME, and VCENTER_PASSWORD environment variables."
+                        )
+                    ]
+                )
 
             # Create ListVM instance
             list_vm = ListVM(
@@ -223,10 +235,22 @@ class VMwareMCPServer:
         """Handle get_vm_details tool call"""
         try:
             vm_id = arguments["vm_id"]
-            server = arguments["server"]
-            username = arguments["username"]
-            password = arguments["password"]
-            skip_verification = arguments.get("skip_verification", False)
+            # Get credentials from arguments or environment variables
+            server = arguments.get("server") or os.getenv("VCENTER_SERVER")
+            username = arguments.get("username") or os.getenv("VCENTER_USERNAME")
+            password = arguments.get("password") or os.getenv("VCENTER_PASSWORD")
+            skip_verification = arguments.get("skip_verification", 
+                os.getenv("VCENTER_SKIP_VERIFICATION", "false").lower() == "true")
+
+            if not server or not username or not password:
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text="Error: Missing vCenter credentials. Please provide server, username, and password as arguments or set VCENTER_SERVER, VCENTER_USERNAME, and VCENTER_PASSWORD environment variables."
+                        )
+                    ]
+                )
 
             # Create ListVM instance
             list_vm = ListVM(
