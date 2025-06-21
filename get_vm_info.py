@@ -2,6 +2,7 @@ import os
 import requests
 import urllib3
 import logging
+import json
 from vmware.vapi.vsphere.client import create_vsphere_client
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,9 +28,28 @@ def get_vsphere_client():
 def safe_get_attr(obj, attr_name, default="Not available"):
     """Safely get attribute from object with fallback."""
     try:
-        return getattr(obj, attr_name) if hasattr(obj, attr_name) else default
+        if hasattr(obj, attr_name):
+            value = getattr(obj, attr_name)
+            return value if value is not None else default
+        else:
+            # Debug: show what attributes are actually available
+            available_attrs = [attr for attr in dir(obj) if not attr.startswith('_')]
+            logger.debug(f"Object {type(obj).__name__} missing '{attr_name}'. Available: {available_attrs}")
+            return default
     except:
         return default
+
+def obj_to_dict(obj):
+    """Convert object to dictionary for JSON logging."""
+    try:
+        if hasattr(obj, '__dict__'):
+            return {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
+        elif hasattr(obj, 'name'):  # Handle enum-like objects
+            return {'name': obj.name}
+        else:
+            return str(obj)
+    except:
+        return str(obj)
 
 def get_vm_info_text(vm_id: str) -> str:
     """Get VM information as formatted text string for MCP server."""
@@ -83,6 +103,12 @@ def get_vm_info_text(vm_id: str) -> str:
         for api_call in api_calls:
             try:
                 data = api_call['call']()
+                
+                # Log the actual JSON data structure
+                logger.info(f"=== {api_call['name']} JSON Data ===")
+                logger.info(json.dumps(obj_to_dict(data), indent=2, default=str))
+                logger.info(f"=== End {api_call['name']} ===")
+                
                 section_lines = [f"---- {api_call['name']} ----"] + api_call['format'](data)
                 sections.append("\n".join(section_lines))
             except Exception as e:
