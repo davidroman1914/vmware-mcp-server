@@ -54,7 +54,13 @@ async def main() -> None:
         
         # Run the server using stdio transport
         from mcp.server.stdio import stdio_server
-        await stdio_server(server)
+        try:
+            # Try the context manager approach first
+            async with stdio_server(server) as stdio:
+                await stdio.run()
+        except TypeError:
+            # Fallback to direct await if context manager doesn't work
+            await stdio_server(server)
         
     except Exception as e:
         logging.error(f"Failed to start server: {e}")
