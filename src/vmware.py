@@ -51,6 +51,14 @@ class VMwareManager:
     def _connect(self) -> None:
         """Connect to vCenter/ESXi using the official VMware SDK."""
         try:
+            # Validate connection parameters
+            if not self.config.host:
+                raise VMwareConnectionError("VCENTER_HOST is required")
+            if not self.config.user:
+                raise VMwareConnectionError("VCENTER_USER is required")
+            if not self.config.password:
+                raise VMwareConnectionError("VCENTER_PASSWORD is required")
+            
             # Create session with SSL verification settings
             session = requests.session()
             if self.config.insecure:
@@ -65,7 +73,7 @@ class VMwareManager:
                 session=session
             )
             
-            logging.info("Successfully connected to VMware vCenter/ESXi API")
+            logging.info(f"Successfully connected to VMware vCenter/ESXi API at {self.config.host}")
             
         except Exception as e:
             logging.error(f"Failed to connect to vCenter/ESXi: {e}")

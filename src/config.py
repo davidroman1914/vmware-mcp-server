@@ -19,6 +19,15 @@ class VMwareConfig:
     datastore: Optional[str] = None
     network: Optional[str] = None
     insecure: bool = False
+    
+    def __post_init__(self):
+        """Validate required fields."""
+        if not self.host:
+            raise ValueError("VCENTER_HOST is required")
+        if not self.user:
+            raise ValueError("VCENTER_USER is required")
+        if not self.password:
+            raise ValueError("VCENTER_PASSWORD is required")
 
 
 @dataclass
