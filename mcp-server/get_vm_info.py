@@ -96,28 +96,40 @@ def get_vm_info_text(vm_id: str) -> str:
                 except (ValueError, TypeError):
                     output.append(f"**Memory:** {size_mib} MiB")
         
-        # Disk info
+        # Disk info - simplified and robust
         if disks:
             output.append("\n💾 **Disks:**")
             for disk in disks:
+                # Get basic disk info
+                disk_id = safe_get_attr(disk, 'disk', 'Unknown')
                 capacity = safe_get_attr(disk, 'capacity', 'Unknown')
                 disk_type = safe_get_attr(disk, 'type', 'Unknown')
+                
+                # Format the output
                 if capacity != 'Unknown':
                     output.append(f"  • {format_bytes(capacity)} ({disk_type})")
                 else:
                     output.append(f"  • {disk_type}")
         
-        # Network adapters
+        # Network adapters - simplified and robust
         if nics:
             output.append("\n🌐 **Network Adapters:**")
             for nic in nics:
-                backing = safe_get_attr(nic, 'backing', 'Unknown')
-                if isinstance(backing, dict):
-                    network_id = backing.get('network', 'Unknown')
-                else:
-                    network_id = 'Unknown'
-                network_name = get_network_name(client, network_id)
+                # Get basic NIC info
+                nic_id = safe_get_attr(nic, 'nic', 'Unknown')
                 mac_address = safe_get_attr(nic, 'mac_address', 'Unknown')
+                backing = safe_get_attr(nic, 'backing', 'Unknown')
+                
+                # Get network name
+                network_name = "Unknown"
+                if backing != 'Unknown':
+                    if isinstance(backing, dict):
+                        network_id = backing.get('network', 'Unknown')
+                    else:
+                        network_id = safe_get_attr(backing, 'network', 'Unknown')
+                    if network_id != 'Unknown':
+                        network_name = get_network_name(client, network_id)
+                
                 output.append(f"  • {network_name} (MAC: {mac_address})")
         
         return "\n".join(output)
