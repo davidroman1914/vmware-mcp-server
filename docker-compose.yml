@@ -1,54 +1,17 @@
 version: '3.8'
 
 services:
-  vmware-mcp-server:
+  vmware-vm-list:
     build: .
-    container_name: vmware-mcp-server
     environment:
-      # VMware Configuration
-      - VCENTER_HOST=${VCENTER_HOST:-192.168.1.100}
-      - VCENTER_USER=${VCENTER_USER:-administrator@vsphere.local}
-      - VCENTER_PASSWORD=${VCENTER_PASSWORD:-password}
-      - VCENTER_DATACENTER=${VCENTER_DATACENTER:-Datacenter1}
-      - VCENTER_CLUSTER=${VCENTER_CLUSTER:-}
-      - VCENTER_DATASTORE=${VCENTER_DATASTORE:-Datastore1}
-      - VCENTER_NETWORK=${VCENTER_NETWORK:-VM Network}
-      - VCENTER_INSECURE=${VCENTER_INSECURE:-true}
-      
-      # Server Configuration
-      - API_KEY=${API_KEY:-your-api-key-here}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - HOST=${HOST:-0.0.0.0}
-      - PORT=${PORT:-8000}
-    
+      - VCENTER_SERVER=${VCENTER_SERVER}
+      - VCENTER_USERNAME=${VCENTER_USERNAME}
+      - VCENTER_PASSWORD=${VCENTER_PASSWORD}
+    command: >
+      python list_vms.py
+      --server ${VCENTER_SERVER}
+      --username ${VCENTER_USERNAME}
+      --password ${VCENTER_PASSWORD}
+      --skip-verification
     volumes:
-      - ./logs:/app/logs
-      - ./config.yaml:/app/config.yaml:ro
-    
-    ports:
-      - "8000:8000"
-    
-    restart: unless-stopped
-    
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Optional: Add a test service for development
-  test:
-    build: .
-    container_name: vmware-mcp-server-test
-    environment:
-      - VCENTER_HOST=test-host
-      - VCENTER_USER=test-user
-      - VCENTER_PASSWORD=test-password
-      - API_KEY=test-key
-      - LOG_LEVEL=DEBUG
-    volumes:
-      - ./tests:/app/tests
-    command: ["python", "-m", "pytest", "tests/", "-v", "--cov=src"]
-    profiles:
-      - test 
+      - ./logs:/app/logs 

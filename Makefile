@@ -1,43 +1,30 @@
-# WARNING: All commands must run inside Docker containers via docker-compose!
-.PHONY: help build build-base test up down clean
+# VMware vSphere VM List Makefile
 
-help:
+.PHONY: help
+help: ## Show this help message
 	@echo "Available commands:"
-	@echo "  build-base - Build the base Docker image with dependencies (build once)"
-	@echo "  build      - Build the application Docker image (fast, uses base)"
-	@echo "  build-full - Build everything from scratch (slow, no cache)"
-	@echo "  up         - Start the server in a container"
-	@echo "  down       - Stop and clean up containers"
-	@echo "  test       - Run the test suite in a container"
-	@echo "  clean      - Remove containers, images, and volumes"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
-build-base:
-	@echo "Building base image with dependencies..."
-	docker build -f Dockerfile.base -t vmware-mcp-server-base:latest .
-	@echo "Base image built successfully!"
+.PHONY: setup
+setup: ## Create .env file from template
+	@if [ ! -f .env ]; then \
+		cp env.example .env; \
+		echo "Created .env file. Please edit it with your vCenter credentials."; \
+	else \
+		echo ".env file already exists."; \
+	fi
 
-build:
-	@echo "Building application image (using base image)..."
-	@echo "Removing existing latest tag to ensure fresh build..."
-	-docker rmi vmware-mcp-server-vmware-mcp-server:latest 2>/dev/null || true
-	docker build -t vmware-mcp-server-vmware-mcp-server:latest .
-	@echo "Application image built successfully!"
+.PHONY: build
+build: ## Build Docker image
+	docker-compose build
 
-build-full:
-	@echo "Building everything from scratch (no cache)..."
-	@echo "Removing existing latest tag to ensure fresh build..."
-	-docker rmi vmware-mcp-server-vmware-mcp-server:latest 2>/dev/null || true
-	docker build --no-cache -t vmware-mcp-server-vmware-mcp-server:latest .
-	@echo "Full build completed!"
+.PHONY: run
+run: ## Run the VM list script
+	docker-compose up --abort-on-container-exit
 
-up:
-	docker-compose up -d
+.PHONY: clean
+clean: ## Clean up Docker resources
+	docker-compose down --rmi all
 
-down:
-	docker-compose down --remove-orphans
-
-test:
-	docker-compose --profile test run test
-
-clean:
-	docker-compose down --rmi all --volumes --remove-orphans 
+.PHONY: all
+all: setup build run ## Setup, build, and run 
