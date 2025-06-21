@@ -1,6 +1,6 @@
 """
-Minimal VMware management module for ESXi MCP Server using official VMware vSphere Automation SDK.
-Based on the official VMware SDK example: https://github.com/vmware/vsphere-automation-sdk-python/blob/master/samples/vsphere/vcenter/vm/list_vms.py
+VMware management module using official VMware vSphere Automation SDK.
+Based on: https://vmware.github.io/vsphere-automation-sdk-python/vsphere/8.0.3.0/com.vmware.vcenter.vm.html
 """
 import logging
 import requests
@@ -8,6 +8,8 @@ import urllib3
 from typing import Optional, List, Dict, Any
 
 from vmware.vapi.vsphere.client import create_vsphere_client
+from com.vmware.vcenter.vm_client import Power
+from com.vmware.vcenter.vm.hardware_client import Cpu, Memory
 
 from .config import VMwareConfig
 
@@ -18,7 +20,7 @@ class VMwareConnectionError(Exception):
 
 
 class VMwareManager:
-    """Minimal VMware vSphere/ESXi manager using official VMware SDK."""
+    """VMware vSphere/ESXi manager using official VMware SDK."""
     
     def __init__(self, config: VMwareConfig, connect: bool = True):
         self.config = config
@@ -58,12 +60,12 @@ class VMwareManager:
             raise VMwareConnectionError(f"Connection failed: {e}")
     
     def list_vms(self) -> List[Dict[str, Any]]:
-        """List all virtual machines - simple implementation based on VMware SDK example."""
+        """List all virtual machines using official SDK patterns."""
         try:
             if not self.client:
                 raise VMwareConnectionError("Not connected to VMware")
             
-            # Get list of VMs - this is the core functionality from the SDK example
+            # Get list of VMs - following SDK documentation
             vms = self.client.vcenter.VM.list()
             
             vm_list = []
@@ -77,16 +79,15 @@ class VMwareManager:
                     'guest_id': 'UNKNOWN'
                 }
                 
-                # Try to get additional details, but don't fail if we can't
+                # Get power state using official SDK
                 try:
-                    # Get power state
                     power_info = self.client.vcenter.vm.Power.get(vm.vm)
                     vm_info['power_state'] = power_info.state.value
                 except Exception as e:
                     logging.debug(f"Could not get power info for VM {vm.name}: {e}")
                 
+                # Get hardware info using official SDK
                 try:
-                    # Get hardware info
                     hardware_info = self.client.vcenter.vm.Hardware.get(vm.vm)
                     vm_info['cpu_count'] = hardware_info.cpu.count
                     vm_info['memory_mb'] = hardware_info.memory.size_MiB
@@ -100,6 +101,33 @@ class VMwareManager:
             
         except Exception as e:
             logging.error(f"Failed to list VMs: {e}")
+            raise
+    
+    def get_vm_power_state(self, vm_id: str) -> str:
+        """Get power state of a specific VM using official SDK."""
+        try:
+            power_info = self.client.vcenter.vm.Power.get(vm_id)
+            return power_info.state.value
+        except Exception as e:
+            logging.error(f"Failed to get power state for VM {vm_id}: {e}")
+            raise
+    
+    def power_on_vm(self, vm_id: str) -> None:
+        """Power on a VM using official SDK."""
+        try:
+            self.client.vcenter.vm.Power.start(vm_id)
+            logging.info(f"Successfully powered on VM {vm_id}")
+        except Exception as e:
+            logging.error(f"Failed to power on VM {vm_id}: {e}")
+            raise
+    
+    def power_off_vm(self, vm_id: str) -> None:
+        """Power off a VM using official SDK."""
+        try:
+            self.client.vcenter.vm.Power.stop(vm_id)
+            logging.info(f"Successfully powered off VM {vm_id}")
+        except Exception as e:
+            logging.error(f"Failed to power off VM {vm_id}: {e}")
             raise
     
     def get_info(self) -> Dict[str, Any]:
