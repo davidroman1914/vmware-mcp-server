@@ -8,10 +8,20 @@ services:
       - VCENTER_USERNAME=${VCENTER_USERNAME}
       - VCENTER_PASSWORD=${VCENTER_PASSWORD}
     command: >
-      python list_vms.py
+      python scripts/list_vms.py
       --server ${VCENTER_SERVER}
       --username ${VCENTER_USERNAME}
       --password ${VCENTER_PASSWORD}
       --skip-verification
+    volumes:
+      - ./logs:/app/logs
+
+  vmware-mcp-server:
+    build: .
+    environment:
+      - VCENTER_SERVER=${VCENTER_SERVER}
+      - VCENTER_USERNAME=${VCENTER_USERNAME}
+      - VCENTER_PASSWORD=${VCENTER_PASSWORD}
+    command: python mcp-server/server.py
     volumes:
       - ./logs:/app/logs 

@@ -1,6 +1,22 @@
-# VMware vSphere VM List Docker Container
+# VMware vSphere VM Management
 
-This Docker container provides a simple way to list all VMs from a VMware vCenter server using the official VMware vSphere Automation SDK for Python.
+This project provides both standalone Python scripts and an MCP (Model Context Protocol) server for VMware vSphere VM management.
+
+## Project Structure
+
+```
+vmware-mcp-server/
+├── scripts/           # Standalone Python scripts for testing
+│   ├── list_vms.py    # VM listing script
+│   └── test_connection.py  # SDK connection test
+├── mcp-server/        # MCP server implementation
+│   ├── server.py      # Main MCP server
+│   └── pyproject.toml # MCP server dependencies
+├── Dockerfile         # Docker configuration
+├── docker-compose.yml # Docker Compose services
+├── Makefile          # Build and run commands
+└── requirements.txt  # VMware SDK dependencies
+```
 
 ## Prerequisites
 
@@ -10,11 +26,9 @@ This Docker container provides a simple way to list all VMs from a VMware vCente
 
 ## Quick Start
 
-1. **Clone or download this repository**
-
-2. **Set up environment variables**
+1. **Set up environment variables**
    ```bash
-   cp env.example .env
+   make setup
    ```
    Edit the `.env` file with your vCenter details:
    ```bash
@@ -23,59 +37,114 @@ This Docker container provides a simple way to list all VMs from a VMware vCente
    VCENTER_PASSWORD=your_password
    ```
 
-3. **Build and run the container**
+2. **Build the Docker image**
    ```bash
-   docker-compose up --build
+   make build
    ```
 
-## Manual Docker Commands
+## Usage
 
-If you prefer to use Docker commands directly:
+### Standalone Scripts
 
-### Build the image
+**Test the connection:**
 ```bash
-docker build -t vmware-vm-list .
+make test-script
 ```
 
-### Run the container
+**Run VM listing script:**
 ```bash
-docker run --rm \
-  -e VCENTER_SERVER=your-vcenter-server.com \
-  -e VCENTER_USERNAME=administrator@vsphere.local \
-  -e VCENTER_PASSWORD=your_password \
-  vmware-vm-list \
-  python list_vms.py \
+make run
+```
+
+**Open shell in container:**
+```bash
+make shell
+```
+
+**Manual script execution:**
+```bash
+docker-compose run --rm vmware-vm-list python scripts/list_vms.py \
   --server your-vcenter-server.com \
-  --username administrator@vsphere.local \
-  --password your_password \
+  --username admin \
+  --password password \
   --skip-verification
 ```
 
-## Command Line Options
+### MCP Server
 
-The script supports the following command line arguments:
+**Run the MCP server:**
+```bash
+make run-mcp
+```
 
-- `--server`: vCenter server address (required)
-- `--username`: Username for authentication (required)
-- `--password`: Password for authentication (required)
-- `--skip-verification`: Skip SSL certificate verification (optional, useful for self-signed certificates)
+The MCP server provides the following tools:
+
+- `list_vms` - List all VMs in vCenter server
+- `get_vm_details` - Get detailed information about a specific VM
+
+## MCP Server Tools
+
+### list_vms
+Lists all VMs in the vCenter server with their basic information.
+
+**Parameters:**
+- `server` (required): vCenter server address
+- `username` (required): Username for authentication
+- `password` (required): Password for authentication
+- `skip_verification` (optional): Skip SSL certificate verification
+
+### get_vm_details
+Gets detailed information about a specific VM.
+
+**Parameters:**
+- `vm_id` (required): VM ID (e.g., vm-123)
+- `server` (required): vCenter server address
+- `username` (required): Username for authentication
+- `password` (required): Password for authentication
+- `skip_verification` (optional): Skip SSL certificate verification
+
+## Docker Services
+
+The project includes two Docker services:
+
+1. **vmware-vm-list**: Runs standalone scripts for testing and manual execution
+2. **vmware-mcp-server**: Runs the MCP server for integration with MCP clients
+
+## Development
+
+**Build and test everything:**
+```bash
+make all
+```
+
+**Clean up:**
+```bash
+make clean
+```
 
 ## Example Output
 
+### Standalone Script
 ```
 ==================================================
 List Of VMs
 ==================================================
-[{'memory_size_MiB': 4096,
-  'name': 'Test-VM-1',
-  'power_state': 'POWERED_ON',
-  'vm': 'vm-123'},
- {'memory_size_MiB': 2048,
-  'name': 'Test-VM-2',
-  'power_state': 'POWERED_OFF',
-  'vm': 'vm-456'}]
+[Summary(vm='vm-2010', name='ova-inf-dns-01.ova.nydig.local', power_state=State(string='POWERED_ON'), cpu_count=2, memory_size_mib=2048)]
 ==================================================
-Total VMs found: 2
+Total VMs found: 12
+```
+
+### MCP Server Response
+```
+VMware vCenter VM List
+==================================================
+Total VMs found: 12
+
+• ova-inf-dns-01.ova.nydig.local (ID: vm-2010)
+  Power State: POWERED_ON, CPU: 2, Memory: 2048 MiB
+
+• ova-inf-nfs-uat-01 (ID: vm-2011)
+  Power State: POWERED_ON, CPU: 2, Memory: 4096 MiB
 ```
 
 ## Troubleshooting
@@ -83,7 +152,7 @@ Total VMs found: 2
 ### SSL Certificate Issues
 If you encounter SSL certificate errors, use the `--skip-verification` flag:
 ```bash
-python list_vms.py --server vcenter.example.com --username admin --password pass --skip-verification
+python scripts/list_vms.py --server vcenter.example.com --username admin --password pass --skip-verification
 ```
 
 ### Connection Issues
@@ -103,11 +172,10 @@ python list_vms.py --server vcenter.example.com --username admin --password pass
 
 ## Dependencies
 
-This container uses the following VMware SDK packages:
-- vsphere-automation-sdk==8.0.2.0
-- vsphere-automation-sdk-python==8.0.2.0
-- vsphere-automation-sdk-python-lib==8.0.2.0
-- vsphere-automation-sdk-python-samples==8.0.2.0
+This project uses:
+- VMware vSphere Automation SDK for Python (from GitHub)
+- MCP Python SDK for the MCP server implementation
+- Docker for containerization
 
 ## License
 

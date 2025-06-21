@@ -19,12 +19,24 @@ build: ## Build Docker image
 	docker-compose build
 
 .PHONY: run
-run: ## Run the VM list script
-	docker-compose up --abort-on-container-exit
+run: ## Run the VM list script (standalone)
+	docker-compose up vmware-vm-list --abort-on-container-exit
+
+.PHONY: run-mcp
+run-mcp: ## Run the MCP server
+	docker-compose up vmware-mcp-server --abort-on-container-exit
+
+.PHONY: test-script
+test-script: ## Test standalone script in container
+	docker-compose run --rm vmware-vm-list python scripts/test_connection.py
+
+.PHONY: shell
+shell: ## Open shell in container
+	docker-compose run --rm vmware-vm-list /bin/bash
 
 .PHONY: clean
 clean: ## Clean up Docker resources
 	docker-compose down --rmi all
 
 .PHONY: all
-all: setup build run ## Setup, build, and run 
+all: setup build run ## Setup, build, and run standalone script 
