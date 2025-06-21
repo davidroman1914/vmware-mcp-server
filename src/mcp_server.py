@@ -551,10 +551,14 @@ async def run_server(config: Config) -> None:
     
     server = await create_server(config)
     
-    # Run the server using stdio transport with the high-level API
+    # Run the server using stdio transport with fallback handling
     try:
+        # Try the context manager approach first
         async with stdio_server(server) as stdio:
             await stdio.run()
+    except TypeError:
+        # Fallback to direct await if context manager doesn't work
+        await stdio_server(server)
     except Exception as e:
         logging.error(f"Failed to run server: {e}")
         raise 
