@@ -553,7 +553,7 @@ class ESXiMCPServer:
                 ]
             )
     
-    async def list_resources(self, request=None) -> ListResourcesResult:
+    async def list_resources(self, request=None) -> Dict[str, Any]:
         """List available resources."""
         if not self.vmware_manager:
             # Return a placeholder response to illustrate the correct format
@@ -652,7 +652,7 @@ async def create_server(config: Config) -> Server:
     logging.info("Registering list_resources handler...")
     try:
         @server.list_resources()
-        async def handle_list_resources() -> ListResourcesResult:
+        async def handle_list_resources() -> Dict[str, Any]:
             logging.debug("list_resources handler called")
             result = await esxi_server.list_resources()
             logging.debug(f"list_resources result: {result}")
