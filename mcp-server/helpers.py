@@ -64,6 +64,10 @@ def format_bytes(bytes_value):
 def get_vm_by_id(client, vm_id):
     """Get VM details by ID using VMware helper pattern."""
     try:
+        # Ensure VM ID has the proper format (vm-xxx)
+        if not vm_id.startswith('vm-'):
+            vm_id = f"vm-{vm_id}"
+        
         filter_spec = VM.FilterSpec(vms=set([vm_id]))
         vms = client.vcenter.VM.list(filter=filter_spec)
         
