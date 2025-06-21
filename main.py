@@ -6,7 +6,7 @@ import asyncio
 import logging
 import sys
 
-from src.mcp_server import VMwareMCPServer
+from src.mcp_server import run_server
 
 # Configure logging
 logging.basicConfig(
@@ -16,16 +16,7 @@ logging.basicConfig(
 
 async def main():
     """Main entry point."""
-    server = VMwareMCPServer()
-    try:
-        await server.run()
-    except KeyboardInterrupt:
-        logging.info("Server stopped by user")
-    except Exception as e:
-        logging.error(f"Server error: {e}")
-        sys.exit(1)
-    finally:
-        server.cleanup()
+    await run_server()
 
 if __name__ == "__main__":
     asyncio.run(main()) 

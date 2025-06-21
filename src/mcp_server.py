@@ -3,6 +3,7 @@ Minimal MCP Server for VMware ESXi management.
 """
 import asyncio
 import logging
+import sys
 from typing import Optional, List, Dict, Any
 
 from mcp.server import Server
@@ -148,26 +149,41 @@ class VMwareMCPServer:
             )
     
     async def run(self):
-        """Run the MCP server."""
+        """Run the MCP server with simple error handling."""
         try:
+            # Simple approach: just use stdio_server directly
             async with stdio_server() as (read_stream, write_stream):
-                await self.server.run(
-                    read_stream,
-                    write_stream,
-                    InitializationOptions(
-                        server_name="vmware-mcp-server",
-                        server_version="1.0.0",
-                        capabilities=self.server.get_capabilities(
-                            notification_options=None,
-                            experimental_capabilities=None,
-                        ),
+                init_options = InitializationOptions(
+                    server_name="vmware-mcp-server",
+                    server_version="1.0.0",
+                    capabilities=self.server.get_capabilities(
+                        notification_options=None,
+                        experimental_capabilities=None,
                     ),
                 )
+                await self.server.run(read_stream, write_stream, init_options)
+                
         except Exception as e:
             logging.error(f"Server error: {e}")
-            raise
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
+            sys.exit(1)
     
     def cleanup(self):
         """Clean up resources."""
         if self.vmware_manager:
             self.vmware_manager.disconnect()
+
+
+async def run_server():
+    """Simple server runner function."""
+    server = VMwareMCPServer()
+    try:
+        await server.run()
+    except KeyboardInterrupt:
+        logging.info("Server stopped by user")
+    except Exception as e:
+        logging.error(f"Server error: {e}")
+        sys.exit(1)
+    finally:
+        server.cleanup()
