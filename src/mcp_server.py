@@ -559,31 +559,37 @@ async def create_server(config: Config) -> Server:
 async def run_server(config: Config) -> None:
     """Run the MCP server with proper initialization."""
     from mcp.server.stdio import stdio_server
+    from mcp.server.lowlevel import NotificationOptions
+    from mcp.server.models import InitializationOptions
     import traceback
     
     logging.info("Creating MCP server instance...")
     server = await create_server(config)
     logging.info("MCP server instance created successfully")
     
-    # Run the server using stdio transport with fallback handling
+    # Set up proper initialization options
+    logging.info("Setting up initialization options...")
+    init_options = InitializationOptions(
+        server_name="vmware-mcp-server",
+        server_version="1.1.0",
+        capabilities=server.get_capabilities(
+            notification_options=NotificationOptions(),
+            experimental_capabilities={},
+        ),
+    )
+    logging.info("Initialization options configured successfully")
+    
+    # Run the server using stdio transport with proper initialization
     try:
-        logging.info("Attempting to start stdio server with context manager...")
-        # Try the context manager approach first
-        async with stdio_server(server) as stdio:
-            logging.info("stdio server context manager acquired, starting server...")
-            await stdio.run()
-            logging.info("stdio server run completed successfully")
-    except TypeError as e:
-        logging.warning(f"Context manager approach failed with TypeError: {e}")
-        logging.info("Falling back to direct await approach...")
-        try:
-            # Fallback to direct await if context manager doesn't work
-            await stdio_server(server)
-            logging.info("Direct await approach completed successfully")
-        except Exception as fallback_error:
-            logging.error(f"Fallback approach also failed: {fallback_error}")
-            logging.error(f"Fallback error traceback: {traceback.format_exc()}")
-            raise
+        logging.info("Starting stdio server with low-level API...")
+        async with stdio_server() as (read_stream, write_stream):
+            logging.info("stdio streams acquired, running server...")
+            await server.run(
+                read_stream,
+                write_stream,
+                init_options,
+            )
+            logging.info("Server run completed successfully")
     except Exception as e:
         logging.error(f"Failed to run server: {e}")
         logging.error(f"Error type: {type(e).__name__}")

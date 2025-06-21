@@ -1,16 +1,30 @@
 # WARNING: All commands must run inside Docker containers via docker-compose!
-.PHONY: help build test up down clean
+.PHONY: help build build-base test up down clean
 
 help:
 	@echo "Available commands:"
-	@echo "  build   - Build Docker images"
-	@echo "  up      - Start the server in a container"
-	@echo "  down    - Stop and clean up containers"
-	@echo "  test    - Run the test suite in a container"
-	@echo "  clean   - Remove containers, images, and volumes"
+	@echo "  build-base - Build the base Docker image with dependencies (build once)"
+	@echo "  build      - Build the application Docker image (fast, uses base)"
+	@echo "  build-full - Build everything from scratch (slow, no cache)"
+	@echo "  up         - Start the server in a container"
+	@echo "  down       - Stop and clean up containers"
+	@echo "  test       - Run the test suite in a container"
+	@echo "  clean      - Remove containers, images, and volumes"
+
+build-base:
+	@echo "Building base image with dependencies..."
+	docker build -f Dockerfile.base -t vmware-mcp-server-base:latest .
+	@echo "Base image built successfully!"
 
 build:
-	docker-compose build --no-cache
+	@echo "Building application image (using base image)..."
+	docker build -t vmware-mcp-server-vmware-mcp-server:latest .
+	@echo "Application image built successfully!"
+
+build-full:
+	@echo "Building everything from scratch (no cache)..."
+	docker build --no-cache -t vmware-mcp-server-vmware-mcp-server:latest .
+	@echo "Full build completed!"
 
 up:
 	docker-compose up -d

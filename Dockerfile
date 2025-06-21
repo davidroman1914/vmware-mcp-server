@@ -1,45 +1,18 @@
-# Use Python 3.11 slim image as base
-FROM python:3.11-slim
+# Final Docker image for VMware MCP Server
+# Uses the base image with all dependencies
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PIP_NO_CACHE_DIR=1
+FROM vmware-mcp-server-base:latest
 
-# Set working directory
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libssl-dev \
-    libffi-dev \
-    python3-dev \
-    make \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-# Install VMware vSphere Automation SDK for Python (recommended method)
-RUN pip install --upgrade git+https://github.com/vmware/vsphere-automation-sdk-python.git
-
-# Copy source code
+# Copy application code only
 COPY src/ ./src/
 COPY tests/ ./tests/
 COPY config.yaml.sample ./config.yaml.sample
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash app \
-    && chown -R app:app /app
-USER app
+# Set ownership
+RUN chown -R app:app /app
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Switch to app user
+USER app
 
 # Expose port (if needed for HTTP transport)
 EXPOSE 8000
