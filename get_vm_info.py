@@ -5,6 +5,7 @@ import logging
 import json
 from vmware.vapi.vsphere.client import create_vsphere_client
 from com.vmware.vcenter.vm.hardware_client import Memory, Disk
+from com.vmware.vcenter_client import VM
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -97,10 +98,25 @@ def get_vm_info_text(vm_id: str) -> str:
     """Get VM information as formatted text string for MCP server."""
     try:
         client = get_vsphere_client()
+        
+        # First, verify the VM exists and get basic info
+        vm_info = get_vm_by_id(client, vm_id)
+        if not vm_info:
+            return f"❌ VM with ID '{vm_id}' not found"
+        
         sections = []
         
-        # Define API calls and their formatting
+        # Define API calls and their formatting with enhanced helpers
         api_calls = [
+            {
+                'name': 'VM Basic Info',
+                'call': lambda: vm_info,
+                'format': lambda data: [
+                    f"Name              : {safe_get_attr(data, 'name')}",
+                    f"ID                : {safe_get_attr(data, 'vm')}",
+                    f"Guest OS          : {get_guest_os_info(client, vm_id)}"
+                ]
+            },
             {
                 'name': 'Guest Identity',
                 'call': lambda: client.vcenter.vm.guest.Identity.get(vm_id),
@@ -114,14 +130,6 @@ def get_vm_info_text(vm_id: str) -> str:
                 'name': 'Power State',
                 'call': lambda: client.vcenter.vm.Power.get(vm_id),
                 'format': lambda data: [f"Power State       : {safe_get_attr(data, 'state')}"]
-            },
-            {
-                'name': 'VM Info',
-                'call': lambda: client.vcenter.VM.get(vm_id),
-                'format': lambda data: [
-                    f"Name              : {safe_get_attr(data, 'name')}",
-                    f"Guest OS          : {safe_get_attr(data, 'guest_OS')}"
-                ]
             },
             {
                 'name': 'Memory',
@@ -205,8 +213,13 @@ def get_network_details(client, vm_id, nic_id):
         network_name = "Unknown"
         if backing and backing != "No backing":
             inspect_object(backing, f"Network Adapter {nic_id} Backing")
-            network_name = safe_get_attr(backing, 'network_name', 
-                                       safe_get_attr(backing, 'network', 'Unknown'))
+            
+            # Try to get network name using helper
+            network_id = safe_get_attr(backing, 'network', "No network ID")
+            if network_id and network_id != "No network ID":
+                network_name = get_network_name(client, network_id)
+            else:
+                network_name = safe_get_attr(backing, 'network_name', 'Unknown')
         
         # Safely get other attributes
         mac_address = safe_get_attr(nic_info, 'mac_address', 'Unknown')
@@ -216,5 +229,62 @@ def get_network_details(client, vm_id, nic_id):
         return f"{network_name} (MAC: {mac_address}, Type: {mac_type}, Connected: {start_connected})"
     except Exception as e:
         logger.error(f"Failed to get network details for nic {nic_id}: {str(e)}")
+        return "Unknown"
+
+def get_vm_by_id(client, vm_id):
+    """Get VM details by ID using VMware helper pattern."""
+    try:
+        # Use FilterSpec to get specific VM
+        filter_spec = VM.FilterSpec(vms=set([vm_id]))
+        vms = client.vcenter.VM.list(filter=filter_spec)
+        
+        if len(vms) == 0:
+            logger.warning(f"VM with ID ({vm_id}) not found")
+            return None
+            
+        vm = vms[0]
+        logger.info(f"Found VM '{vm.name}' ({vm.vm})")
+        return vm
+    except Exception as e:
+        logger.error(f"Error getting VM by ID {vm_id}: {str(e)}")
+        return None
+
+def get_guest_os_info(client, vm_id):
+    """Get detailed guest OS information with proper error handling."""
+    try:
+        # Try to get guest identity info
+        guest_info = client.vcenter.vm.guest.Identity.get(vm_id)
+        
+        # Get VM info for additional OS details
+        vm_info = client.vcenter.VM.get(vm_id)
+        
+        guest_os = safe_get_attr(guest_info, 'guest_os', 'Unknown')
+        vm_guest_os = safe_get_attr(vm_info, 'guest_OS', 'Unknown')
+        
+        # Prefer guest identity OS if available, fallback to VM guest OS
+        if guest_os and guest_os != 'Unknown':
+            return guest_os
+        elif vm_guest_os and vm_guest_os != 'Unknown':
+            return vm_guest_os
+        else:
+            return "Not available (VMware Tools may not be running)"
+            
+    except Exception as e:
+        logger.error(f"Failed to get guest OS info: {str(e)}")
+        return "Not available"
+
+def get_network_name(client, network_id):
+    """Get network name from network ID using VMware helper pattern."""
+    try:
+        from com.vmware.vcenter_client import Network
+        filter_spec = Network.FilterSpec(networks=set([network_id]))
+        networks = client.vcenter.Network.list(filter=filter_spec)
+        
+        if networks:
+            return networks[0].name
+        else:
+            return "Unknown"
+    except Exception as e:
+        logger.error(f"Failed to get network name for {network_id}: {str(e)}")
         return "Unknown"
 
