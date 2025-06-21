@@ -152,6 +152,36 @@ def get_cluster_name(client, cluster_id):
         logger.error(f"Failed to get cluster name for {cluster_id}: {str(e)}")
         return "Unknown"
 
+def get_vm_runtime_info(client, vm_id):
+    """Get VM runtime information which might contain placement details."""
+    try:
+        # Try to get runtime info
+        runtime_info = client.vcenter.vm.Power.get(vm_id)
+        logger.info(f"Runtime info type: {type(runtime_info).__name__}")
+        logger.info(f"Runtime info attributes: {[attr for attr in dir(runtime_info) if not attr.startswith('_')]}")
+        
+        # Try to get VM summary which might have more placement info
+        vm_summary = client.vcenter.VM.get(vm_id)
+        logger.info(f"VM Summary type: {type(vm_summary).__name__}")
+        logger.info(f"VM Summary attributes: {[attr for attr in dir(vm_summary) if not attr.startswith('_')]}")
+        
+        # Try to get host info
+        try:
+            host_info = client.vcenter.vm.guest.Identity.get(vm_id)
+            logger.info(f"Host info type: {type(host_info).__name__}")
+            logger.info(f"Host info attributes: {[attr for attr in dir(host_info) if not attr.startswith('_')]}")
+        except Exception as e:
+            logger.error(f"Failed to get host info: {str(e)}")
+        
+        return {
+            'runtime': runtime_info,
+            'summary': vm_summary
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get VM runtime info: {str(e)}")
+        return {}
+
 def get_vm_placement_info(client, vm_id):
     """Get VM placement information including resource pool, datastore, folder, and cluster."""
     try:
@@ -171,21 +201,48 @@ def get_vm_placement_info(client, vm_id):
         
         placement_info = {}
         
-        # Get resource pool
-        if hasattr(vm_info, 'resource_pool') and vm_info.resource_pool:
-            placement_info['resource_pool'] = get_resource_pool_name(client, vm_info.resource_pool)
+        # Try different possible attribute names for resource pool
+        resource_pool_id = None
+        for attr_name in ['resource_pool', 'resourcePool', 'resource_pool_id']:
+            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
+                resource_pool_id = getattr(vm_info, attr_name)
+                break
         
-        # Get datastore (from placement)
-        if hasattr(vm_info, 'datastore') and vm_info.datastore:
-            placement_info['datastore'] = get_datastore_name(client, vm_info.datastore)
+        if resource_pool_id:
+            placement_info['resource_pool'] = get_resource_pool_name(client, resource_pool_id)
         
-        # Get folder
-        if hasattr(vm_info, 'folder') and vm_info.folder:
-            placement_info['folder'] = get_folder_name(client, vm_info.folder)
+        # Try different possible attribute names for datastore
+        datastore_id = None
+        for attr_name in ['datastore', 'datastore_id', 'storage']:
+            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
+                datastore_id = getattr(vm_info, attr_name)
+                break
         
-        # Get cluster (if available)
-        if hasattr(vm_info, 'cluster') and vm_info.cluster:
-            placement_info['cluster'] = get_cluster_name(client, vm_info.cluster)
+        if datastore_id:
+            placement_info['datastore'] = get_datastore_name(client, datastore_id)
+        
+        # Try different possible attribute names for folder
+        folder_id = None
+        for attr_name in ['folder', 'folder_id', 'parent_folder']:
+            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
+                folder_id = getattr(vm_info, attr_name)
+                break
+        
+        if folder_id:
+            placement_info['folder'] = get_folder_name(client, folder_id)
+        
+        # Try different possible attribute names for cluster
+        cluster_id = None
+        for attr_name in ['cluster', 'cluster_id', 'compute_resource']:
+            if hasattr(vm_info, attr_name) and getattr(vm_info, attr_name):
+                cluster_id = getattr(vm_info, attr_name)
+                break
+        
+        if cluster_id:
+            placement_info['cluster'] = get_cluster_name(client, cluster_id)
+        
+        # Also get runtime info for additional placement details
+        runtime_info = get_vm_runtime_info(client, vm_id)
         
         logger.info(f"Placement info found: {placement_info}")
         return placement_info
