@@ -548,29 +548,13 @@ async def create_server(config: Config) -> Server:
 async def run_server(config: Config) -> None:
     """Run the MCP server with proper initialization."""
     from mcp.server.stdio import stdio_server
-    from mcp.server.lowlevel import NotificationOptions
-    from mcp.server.models import InitializationOptions
     
     server = await create_server(config)
     
-    # Set up proper initialization options
-    init_options = InitializationOptions(
-        server_name="vmware-mcp-server",
-        server_version="1.0.0",
-        capabilities=server.get_capabilities(
-            notification_options=NotificationOptions(),
-            experimental_capabilities={},
-        ),
-    )
-    
-    # Run the server using stdio transport with proper initialization
+    # Run the server using stdio transport with the high-level API
     try:
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(
-                read_stream,
-                write_stream,
-                init_options,
-            )
+        async with stdio_server(server) as stdio:
+            await stdio.run()
     except Exception as e:
         logging.error(f"Failed to run server: {e}")
         raise 
