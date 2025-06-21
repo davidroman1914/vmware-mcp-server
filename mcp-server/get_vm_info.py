@@ -5,7 +5,7 @@ Provides functions to get detailed information about VMware VMs.
 """
 
 import logging
-from .helpers import (
+from helpers import (
     get_vsphere_client,
     safe_get_attr,
     format_bytes,

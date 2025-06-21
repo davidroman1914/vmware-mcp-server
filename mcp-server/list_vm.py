@@ -5,7 +5,7 @@ Provides a function to list all VMs as formatted text.
 """
 
 import logging
-from .helpers import get_vsphere_client, safe_api_call
+from helpers import get_vsphere_client, safe_api_call
 
 logger = logging.getLogger(__name__)
 
