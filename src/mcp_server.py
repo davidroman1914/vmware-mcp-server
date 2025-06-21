@@ -543,7 +543,7 @@ class ESXiMCPServer:
                 ]
             )
     
-    async def list_resources(self, request: ListResourcesRequest) -> ListResourcesResult:
+    async def list_resources(self, request=None) -> ListResourcesResult:
         """List available resources."""
         if not self.vmware_manager:
             return ListResourcesResult(resources=[])
@@ -647,16 +647,12 @@ async def create_server(config: Config) -> Server:
     logging.info("Registering list_resources handler...")
     try:
         @server.list_resources()
-        async def handle_list_resources(request: ListResourcesRequest) -> ListResourcesResult:
+        async def handle_list_resources() -> ListResourcesResult:
             logging.debug("list_resources handler called")
-            logging.debug(f"list_resources request: {request}")
-            logging.debug(f"list_resources request type: {type(request)}")
-            logging.debug(f"list_resources request args: {request.__dict__ if hasattr(request, '__dict__') else 'No __dict__'}")
-            result = await esxi_server.list_resources(request)
+            result = await esxi_server.list_resources()
             logging.debug(f"list_resources result: {result}")
             return result
         logging.info("list_resources handler registered successfully")
-        logging.info(f"handle_list_resources function signature: {handle_list_resources.__code__.co_varnames}")
     except Exception as e:
         logging.error(f"Failed to register list_resources handler: {e}")
         logging.error(f"list_resources error traceback: {traceback.format_exc()}")
