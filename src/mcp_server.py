@@ -557,48 +557,48 @@ class ESXiMCPServer:
         """List available resources."""
         if not self.vmware_manager:
             # Return a placeholder response to illustrate the correct format
-            return ListResourcesResult(
-                resources=[
-                    Resource(
-                        id="placeholder-vm-1",
-                        name="Example VM",
-                        status="powered_off"
-                    )
+            return {
+                "resources": [
+                    {
+                        "id": "placeholder-vm-1",
+                        "name": "Example VM",
+                        "status": "powered_off"
+                    }
                 ],
-                nextCursor=None
-            )
+                "nextCursor": None
+            }
         
         try:
             vms = self.vmware_manager.list_vms()
             resources = []
             
             for vm in vms:
-                # Create a Resource object with the correct schema
-                resource = Resource(
-                    id=vm.name,  # Use VM name as ID
-                    name=vm.name,
-                    status=vm.power_state.lower() if vm.power_state else "unknown"
-                )
+                # Create a resource dictionary with the correct schema
+                resource = {
+                    "id": vm.name,  # Use VM name as ID
+                    "name": vm.name,
+                    "status": vm.power_state.lower() if vm.power_state else "unknown"
+                }
                 resources.append(resource)
             
-            # Return proper ListResourcesResult with correct structure
-            return ListResourcesResult(
-                resources=resources,
-                nextCursor=None
-            )
+            # Return proper dictionary with correct structure
+            return {
+                "resources": resources,
+                "nextCursor": None
+            }
         except Exception as e:
             logging.error(f"Error listing resources: {e}")
             # Return a placeholder response on error
-            return ListResourcesResult(
-                resources=[
-                    Resource(
-                        id="error-placeholder",
-                        name="Error loading VMs",
-                        status="error"
-                    )
+            return {
+                "resources": [
+                    {
+                        "id": "error-placeholder",
+                        "name": "Error loading VMs",
+                        "status": "error"
+                    }
                 ],
-                nextCursor=None
-            )
+                "nextCursor": None
+            }
     
     def cleanup(self):
         """Cleanup resources."""
