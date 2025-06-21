@@ -157,6 +157,18 @@ def get_vm_placement_info(client, vm_id):
     try:
         vm_info = client.vcenter.VM.get(vm_id)
         
+        # Debug: Log all available attributes
+        logger.info(f"=== VM Object Inspection for {vm_id} ===")
+        attrs = [attr for attr in dir(vm_info) if not attr.startswith('_')]
+        logger.info(f"Available VM attributes: {attrs}")
+        
+        for attr in attrs:
+            try:
+                value = getattr(vm_info, attr)
+                logger.info(f"  {attr}: {value} (type: {type(value).__name__})")
+            except Exception as e:
+                logger.info(f"  {attr}: Error accessing - {str(e)}")
+        
         placement_info = {}
         
         # Get resource pool
@@ -175,6 +187,7 @@ def get_vm_placement_info(client, vm_id):
         if hasattr(vm_info, 'cluster') and vm_info.cluster:
             placement_info['cluster'] = get_cluster_name(client, vm_info.cluster)
         
+        logger.info(f"Placement info found: {placement_info}")
         return placement_info
         
     except Exception as e:
