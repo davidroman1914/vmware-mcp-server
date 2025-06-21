@@ -1,10 +1,21 @@
-# VMware vSphere VM List Docker Container
+# VMware MCP Server
 
-This Docker container provides a simple way to list all VMs from a VMware vCenter server using the official VMware vSphere Automation SDK for Python.
+A Model Context Protocol (MCP) server for VMware vCenter management. This server provides tools for listing VMs and getting detailed VM information through the MCP interface.
+
+## Features
+
+- **List VMs**: Get a list of all VMs in vCenter
+- **VM Details**: Get comprehensive information about specific VMs including:
+  - Basic information (name, ID)
+  - Power state
+  - Memory configuration
+  - CPU details
+  - Network adapters
+  - Disk information
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
+- Python 3.11+
 - Access to a VMware vCenter server
 - Valid credentials for the vCenter server
 
@@ -18,96 +29,134 @@ This Docker container provides a simple way to list all VMs from a VMware vCente
    ```
    Edit the `.env` file with your vCenter details:
    ```bash
-   VCENTER_SERVER=your-vcenter-server.com
-   VCENTER_USERNAME=administrator@vsphere.local
+   VCENTER_HOST=your-vcenter-server.com
+   VCENTER_USER=administrator@vsphere.local
    VCENTER_PASSWORD=your_password
+   VCENTER_INSECURE=false
    ```
 
-3. **Build and run the container**
+3. **Install dependencies**
    ```bash
-   docker-compose up --build
+   make install
    ```
 
-## Manual Docker Commands
+4. **Run the MCP server**
+   ```bash
+   make run-local
+   ```
 
-If you prefer to use Docker commands directly:
+## Project Structure
 
-### Build the image
+```
+vmware-mcp-server/
+├── mcp-server/           # MCP server package
+│   ├── __init__.py       # Package initialization
+│   ├── server.py         # Main MCP server
+│   ├── list_vm.py        # VM listing functionality
+│   └── get_vm_info.py    # VM details functionality
+├── main.py               # Entry point
+├── pyproject.toml        # Dependencies and project config
+├── Makefile              # Build and run commands
+└── README.md             # This file
+```
+
+## Available Commands
+
+### Local Development
 ```bash
-docker build -t vmware-vm-list .
+make install          # Install dependencies
+make run-local        # Run MCP server locally
+make run-server       # Run server directly
+make shell            # Start Python shell
 ```
 
-### Run the container
+### Docker (Optional)
 ```bash
-docker run --rm \
-  -e VCENTER_SERVER=your-vcenter-server.com \
-  -e VCENTER_USERNAME=administrator@vsphere.local \
-  -e VCENTER_PASSWORD=your_password \
-  vmware-vm-list \
-  python list_vms.py \
-  --server your-vcenter-server.com \
-  --username administrator@vsphere.local \
-  --password your_password \
-  --skip-verification
+make setup            # Create .env file
+make build            # Build Docker image
+make run              # Run in Docker
+make stop             # Stop Docker containers
 ```
 
-## Command Line Options
+## MCP Tools
 
-The script supports the following command line arguments:
+The server provides two main tools:
 
-- `--server`: vCenter server address (required)
-- `--username`: Username for authentication (required)
-- `--password`: Password for authentication (required)
-- `--skip-verification`: Skip SSL certificate verification (optional, useful for self-signed certificates)
+### 1. `list-vms`
+Lists all VMs in the vCenter server.
 
-## Example Output
-
+**Input Schema:**
+```json
+{}
 ```
-==================================================
-List Of VMs
-==================================================
-[{'memory_size_MiB': 4096,
-  'name': 'Test-VM-1',
-  'power_state': 'POWERED_ON',
-  'vm': 'vm-123'},
- {'memory_size_MiB': 2048,
-  'name': 'Test-VM-2',
-  'power_state': 'POWERED_OFF',
-  'vm': 'vm-456'}]
-==================================================
-Total VMs found: 2
+
+**Example Output:**
+```
+vm-123: Test-VM-1
+vm-456: Test-VM-2
+vm-789: Production-Server
+```
+
+### 2. `get-vm-info`
+Get detailed information about a specific VM.
+
+**Input Schema:**
+```json
+{
+  "vm_id": "vm-123"
+}
+```
+
+**Example Output:**
+```
+### Basic Information
+- **Name:** Test-VM-1
+- **ID:** vm-123
+
+### Power State
+- **Power State:** POWERED_ON
+
+### Memory
+- **Memory:** 4096 MiB (4.0 GB)
+
+### CPU
+- **CPU:** 2 cores
+
+### Network Adapters
+- **Network Adapters:** 1
+  - **Network: VM Network | MAC: 00:50:56:8a:12:34 | Type: ASSIGNED | Connected: True**
+
+### Disks
+- **Disks:** 1
+  - **Capacity:** 100.0 GB
 ```
 
 ## Troubleshooting
 
 ### SSL Certificate Issues
-If you encounter SSL certificate errors, use the `--skip-verification` flag:
-```bash
-python list_vms.py --server vcenter.example.com --username admin --password pass --skip-verification
-```
+If you encounter SSL certificate errors, set `VCENTER_INSECURE=true` in your `.env` file.
 
 ### Connection Issues
-- Ensure your vCenter server is accessible from the Docker host
+- Ensure your vCenter server is accessible
 - Verify the server address and credentials
 - Check if any firewall rules are blocking the connection
 
 ### Permission Issues
-- Make sure the user has sufficient permissions to list VMs in vCenter
+- Make sure the user has sufficient permissions to access vCenter
 - The user should have at least read access to the vCenter inventory
 
 ## Security Notes
 
-- The `--skip-verification` flag disables SSL certificate verification and should only be used in development/testing environments
 - Never commit your `.env` file with real credentials to version control
-- Consider using environment variables or Docker secrets for production deployments
+- The `VCENTER_INSECURE` flag should only be used in development/testing environments
+- Consider using environment variables or secrets for production deployments
 
 ## Dependencies
 
-This container uses the following VMware SDK packages:
-- vsphere-automation-sdk==8.0.2.0
-- vsphere-automation-sdk-python==8.0.2.0
-- vsphere-automation-sdk-python-lib==8.0.2.0
-- vsphere-automation-sdk-python-samples==8.0.2.0
+This project uses the following key dependencies:
+- `mcp`: Model Context Protocol server framework
+- `vmware-vapi`: VMware vSphere Automation SDK
+- `uv`: Fast Python package manager
 
 ## License
 

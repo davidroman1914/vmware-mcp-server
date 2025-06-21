@@ -1,60 +1,14 @@
-import os
 import logging
-import requests
-import urllib3
-from vmware.vapi.vsphere.client import create_vsphere_client
-from com.vmware.vcenter_client import VM
+from helpers import (
+    get_vsphere_client, 
+    safe_get_attr, 
+    format_bytes, 
+    get_vm_by_id, 
+    get_network_name
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-def get_vsphere_client():
-    """Get vSphere client with proper configuration."""
-    host = os.getenv("VCENTER_HOST")
-    user = os.getenv("VCENTER_USER")
-    pwd = os.getenv("VCENTER_PASSWORD")
-    insecure = os.getenv("VCENTER_INSECURE", "false").lower() == "true"
-
-    if not all([host, user, pwd]):
-        missing = [k for k, v in [("VCENTER_HOST", host), ("VCENTER_USER", user), ("VCENTER_PASSWORD", pwd)] if not v]
-        raise EnvironmentError(f"Missing: {', '.join(missing)}")
-
-    session = requests.Session()
-    session.verify = not insecure
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    return create_vsphere_client(server=host, username=user, password=pwd, session=session)
-
-def safe_get_attr(obj, attr_name, default="Not available"):
-    """Safely get attribute from object with fallback."""
-    try:
-        if hasattr(obj, attr_name):
-            value = getattr(obj, attr_name)
-            if hasattr(value, 'name'):
-                return value.name
-            elif hasattr(value, '__str__'):
-                return str(value)
-            else:
-                return value if value is not None else default
-        else:
-            return default
-    except Exception as e:
-        logger.debug(f"Error accessing '{attr_name}': {str(e)}")
-        return default
-
-def format_bytes(bytes_value):
-    """Format bytes in human-readable format."""
-    if bytes_value is None:
-        return "Unknown"
-    try:
-        bytes_value = int(bytes_value)
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes_value < 1024.0:
-                return f"{bytes_value:.1f} {unit}"
-            bytes_value /= 1024.0
-        return f"{bytes_value:.1f} PB"
-    except:
-        return str(bytes_value)
 
 def get_memory_info(client, vm_id):
     """Get memory information."""
@@ -89,14 +43,7 @@ def get_network_details_clean(client, vm_id, nic_id):
         if backing and backing != "No backing":
             network_id = safe_get_attr(backing, 'network', "No network ID")
             if network_id and network_id != "No network ID":
-                try:
-                    from com.vmware.vcenter_client import Network
-                    filter_spec = Network.FilterSpec(networks=set([network_id]))
-                    networks = client.vcenter.Network.list(filter=filter_spec)
-                    if networks:
-                        network_name = networks[0].name
-                except:
-                    pass
+                network_name = get_network_name(client, network_id)
             else:
                 network_name = safe_get_attr(backing, 'network_name', 'Unknown')
         
@@ -142,14 +89,9 @@ def get_vm_info_text(vm_id: str) -> str:
         client = get_vsphere_client()
         
         # Verify VM exists
-        try:
-            filter_spec = VM.FilterSpec(vms=set([vm_id]))
-            vms = client.vcenter.VM.list(filter=filter_spec)
-            if not vms:
-                return f"❌ VM with ID '{vm_id}' not found"
-            vm_info = vms[0]
-        except Exception as e:
-            return f"❌ Failed to find VM: {str(e)}"
+        vm_info = get_vm_by_id(client, vm_id)
+        if not vm_info:
+            return f"❌ VM with ID '{vm_id}' not found"
         
         sections = []
         

@@ -26,4 +26,4 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 
 # Default command to run the MCP server
-CMD ["uv", "run", "python", "server.py"] 
+CMD ["uv", "run", "python", "main.py"] 

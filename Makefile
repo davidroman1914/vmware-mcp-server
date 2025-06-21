@@ -17,7 +17,11 @@ install: ## Sync dependencies from pyproject.toml
 
 .PHONY: run-local
 run-local: ## Run the MCP server locally using uv
-	uv run python server.py
+	uv run python main.py
+
+.PHONY: run-server
+run-server: ## Run the MCP server directly
+	uv run python mcp-server/server.py
 
 .PHONY: shell
 shell: ## Start a Python shell with dependencies
