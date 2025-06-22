@@ -137,6 +137,14 @@ class VMwareMCPServer:
                         "gateway": {
                             "type": "string",
                             "description": "Default gateway (optional)"
+                        },
+                        "cpu_count": {
+                            "type": "integer",
+                            "description": "Number of CPU cores (optional)"
+                        },
+                        "memory_mb": {
+                            "type": "integer",
+                            "description": "Memory size in MB (optional)"
                         }
                     },
                     "required": ["source_vm_id", "new_vm_name"]
@@ -183,6 +191,14 @@ class VMwareMCPServer:
                         "gateway": {
                             "type": "string",
                             "description": "Default gateway (optional)"
+                        },
+                        "cpu_count": {
+                            "type": "integer",
+                            "description": "Number of CPU cores (optional)"
+                        },
+                        "memory_mb": {
+                            "type": "integer",
+                            "description": "Memory size in MB (optional)"
                         }
                     },
                     "required": ["template_id", "new_vm_name"]
@@ -270,7 +286,9 @@ class VMwareMCPServer:
                         hostname=arguments.get("hostname"),
                         ip_address=arguments.get("ip_address"),
                         netmask=arguments.get("netmask"),
-                        gateway=arguments.get("gateway")
+                        gateway=arguments.get("gateway"),
+                        cpu_count=arguments.get("cpu_count"),
+                        memory_mb=arguments.get("memory_mb")
                     )
                 elif tool_name == "deploy_from_template":
                     result = deploy_from_template_text(
@@ -282,7 +300,9 @@ class VMwareMCPServer:
                         hostname=arguments.get("hostname"),
                         ip_address=arguments.get("ip_address"),
                         netmask=arguments.get("netmask"),
-                        gateway=arguments.get("gateway")
+                        gateway=arguments.get("gateway"),
+                        cpu_count=arguments.get("cpu_count"),
+                        memory_mb=arguments.get("memory_mb")
                     )
                 elif tool_name == "list_datastores":
                     result = list_datastores_text()

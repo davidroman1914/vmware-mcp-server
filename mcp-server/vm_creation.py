@@ -40,7 +40,8 @@ def get_vsphere_client():
 def clone_vm_text(source_vm_id: str, new_vm_name: str, datastore_id: str = None, 
                   resource_pool_id: str = None, folder_id: str = None,
                   hostname: str = None, ip_address: str = None, 
-                  netmask: str = None, gateway: str = None):
+                  netmask: str = None, gateway: str = None,
+                  cpu_count: int = None, memory_mb: int = None):
     """Clone a VM with optional customization and return formatted text."""
     try:
         client = get_vsphere_client()
@@ -64,6 +65,18 @@ def clone_vm_text(source_vm_id: str, new_vm_name: str, datastore_id: str = None,
         clone_spec = CloneSpec()
         clone_spec.name = new_vm_name
         clone_spec.placement = placement
+        
+        # Add hardware customization if specified
+        if cpu_count is not None or memory_mb is not None:
+            from vmware.vcenter.vm_client import HardwareUpdateSpec
+            
+            hardware_spec = HardwareUpdateSpec()
+            if cpu_count is not None:
+                hardware_spec.cpu_count = cpu_count
+            if memory_mb is not None:
+                hardware_spec.memory_size_MiB = memory_mb
+            
+            clone_spec.hardware = hardware_spec
         
         # Add customization if network settings provided
         if any([hostname, ip_address, netmask, gateway]):
@@ -94,11 +107,22 @@ def clone_vm_text(source_vm_id: str, new_vm_name: str, datastore_id: str = None,
         import time
         time.sleep(2)  # Give it a moment
         
+        # Build customization summary
+        customizations = []
+        if any([hostname, ip_address, netmask, gateway]):
+            customizations.append("Network")
+        if cpu_count is not None:
+            customizations.append(f"CPU: {cpu_count} cores")
+        if memory_mb is not None:
+            customizations.append(f"Memory: {memory_mb} MB")
+        
+        customization_summary = ", ".join(customizations) if customizations else "None"
+        
         return f"✅ Successfully initiated clone of VM '{source_vm_info.name}' to '{new_vm_name}'\n" \
                f"   • Source VM: {source_vm_info.name} (ID: {source_vm_id})\n" \
                f"   • New VM: {new_vm_name}\n" \
                f"   • Task ID: {task}\n" \
-               f"   • Customization: {'Yes' if any([hostname, ip_address, netmask, gateway]) else 'No'}"
+               f"   • Customization: {customization_summary}"
         
     except Exception as e:
         return f"❌ Error cloning VM {source_vm_id}: {str(e)}"
@@ -106,7 +130,8 @@ def clone_vm_text(source_vm_id: str, new_vm_name: str, datastore_id: str = None,
 def deploy_from_template_text(template_id: str, new_vm_name: str, datastore_id: str = None,
                              resource_pool_id: str = None, folder_id: str = None,
                              hostname: str = None, ip_address: str = None,
-                             netmask: str = None, gateway: str = None):
+                             netmask: str = None, gateway: str = None,
+                             cpu_count: int = None, memory_mb: int = None):
     """Deploy a VM from template with optional customization and return formatted text."""
     try:
         client = get_vsphere_client()
@@ -128,7 +153,9 @@ def deploy_from_template_text(template_id: str, new_vm_name: str, datastore_id: 
             hostname=hostname,
             ip_address=ip_address,
             netmask=netmask,
-            gateway=gateway
+            gateway=gateway,
+            cpu_count=cpu_count,
+            memory_mb=memory_mb
         )
         
     except Exception as e:
