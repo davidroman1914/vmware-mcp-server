@@ -87,14 +87,12 @@ debug-templates: ## Debug VM template detection (requires real vCenter connectio
 	cd mcp-server && uv run python debug_templates.py
 
 .PHONY: docker-test
-docker-test: ## Build and run Docker container for testing with real vCenter
-	docker build -t vmware-mcp-server-clean .
-	docker run --rm -it \
-		-e VCENTER_HOST=$(VCENTER_HOST) \
-		-e VCENTER_USER=$(VCENTER_USER) \
-		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
-		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
-		vmware-mcp-server-clean python debug_templates.py
+docker-test: build ## Test the MCP server in Docker
+	@echo "🔍 Running vCenter environment analysis in Docker..."
+	docker run --rm \
+		--env-file .env \
+		vmware-mcp-server:latest \
+		python debug_templates.py
 
 .PHONY: docker-shell
 docker-shell: ## Start a shell in the Docker container for manual testing

@@ -12,12 +12,3 @@ services:
     tty: true
     volumes:
       - ./logs:/app/logs 
-
-  debug:
-    build: .
-    env_file: .env
-    command: python debug_templates.py
-    volumes:
-      - ./logs:/app/logs
-    profiles:
-      - debug 
