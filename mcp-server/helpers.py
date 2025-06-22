@@ -10,6 +10,7 @@ import requests
 import urllib3
 from vmware.vapi.vsphere.client import create_vsphere_client
 from com.vmware.vcenter_client import VM, Network
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -116,4 +117,36 @@ def safe_api_call(func, error_msg):
         elif "500" in str(e):
             logger.error("vCenter server error (500 error) - check vCenter status")
         
-        return None, f"❌ {error_msg}: {str(e)}" 
+        return None, f"❌ {error_msg}: {str(e)}"
+
+def resolve_template_id(client, template_identifier: str) -> tuple[Optional[str], Optional[str]]:
+    """
+    Resolve template identifier (name or ID) to template ID.
+    
+    Args:
+        client: vSphere client
+        template_identifier: Template name or ID
+        
+    Returns:
+        tuple: (template_id, error_message) - template_id is None if error
+    """
+    try:
+        # First, try to use the identifier directly as a template ID
+        try:
+            # Try to get template info using the identifier as ID
+            template_info = client.vcenter.vm_template.LibraryItems.get(template_identifier)
+            return template_identifier, None  # Success - it was already an ID
+        except Exception as e:
+            # If that fails, the identifier might be a name
+            logger.debug(f"Identifier '{template_identifier}' is not a valid template ID: {str(e)}")
+        
+        # Since we can't easily list templates, we'll provide a helpful error
+        error_msg = f"❌ Template '{template_identifier}' not found. "
+        error_msg += "Please provide the exact template ID (e.g., 'template-123') or ensure the template name is correct. "
+        error_msg += "Note: Template IDs can be found in vCenter or by checking the template's properties."
+        
+        return None, error_msg
+        
+    except Exception as e:
+        logger.error(f"Error resolving template '{template_identifier}': {str(e)}")
+        return None, f"❌ Error resolving template '{template_identifier}': {str(e)}" 

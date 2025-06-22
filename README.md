@@ -144,14 +144,14 @@ Restart vm-456
 
 **Deploy from template (basic):**
 ```
-Deploy a new VM from template template-123 named "my-new-vm"
+Deploy a new VM from template "Ubuntu-Template-01" named "my-new-vm"
 Create a VM called "web-server" from template "ubuntu-template"
 Deploy vm-456 from template "windows-template" and name it "test-server"
 ```
 
 **Deploy with customization:**
 ```
-Deploy a VM from template "template-123" named "production-web". Put it in datacenter "dc-001" and cluster "cluster-001". Give it 4 CPU cores, 8GB RAM, and connect it to "VM Network". Set hostname to "prod-web-01" and IP to "192.168.1.100".
+Deploy a VM from template "Ubuntu-Template-01" named "production-web". Put it in datacenter "dc-001" and cluster "cluster-001". Give it 4 CPU cores, 8GB RAM, and connect it to "VM Network". Set hostname to "prod-web-01" and IP to "192.168.1.100".
 ```
 
 **Deploy with network configuration:**
@@ -202,8 +202,9 @@ When you use these prompts, the MCP server will:
 
 1. **Parse your request** and identify the appropriate tools to use
 2. **Extract parameters** like VM IDs, names, hardware specs, and network settings
-3. **Execute the operations** using the VMware vSphere API
-4. **Provide detailed feedback** including:
+3. **Resolve template names to IDs** automatically (you can use template names like "Ubuntu-Template-01" or IDs like "template-123")
+4. **Execute the operations** using the VMware vSphere API
+5. **Provide detailed feedback** including:
    - Success confirmations with VM IDs
    - IP addresses (if requested and available)
    - Error messages with specific details
@@ -261,7 +262,7 @@ The server handles the complex VMware API interactions behind the scenes, so you
 {
   "name": "deploy-vm-from-template",
   "arguments": {
-    "template_id": "template-456",
+    "template_id": "Ubuntu-Template-01",
     "vm_name": "new-vm-001",
     "datacenter": "dc-001",
     "cluster": "cluster-001",
@@ -269,9 +270,7 @@ The server handles the complex VMware API interactions behind the scenes, so you
       "cpu": {"count": 2, "cores_per_socket": 1},
       "memory": {"size_mib": 4096}
     },
-    "disk": [
-      {"datastore": "datastore-001"}
-    ],
+    "disk": {"datastore": "datastore-001"},
     "networks": [
       {"name": "VM Network", "device_type": "VMXNET3"}
     ],

@@ -11,7 +11,8 @@ from typing import Dict, List, Optional
 from helpers import (
     get_vsphere_client,
     get_vm_by_id,
-    safe_api_call
+    safe_api_call,
+    resolve_template_id
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,14 @@ def deploy_vm_from_template(
     """
     try:
         client = get_vsphere_client()
+        
+        # Resolve template identifier to template ID
+        resolved_template_id, error = resolve_template_id(client, template_id)
+        if error:
+            return error
+        
+        if not resolved_template_id:
+            return "❌ Failed to resolve template ID"
         
         # Build deployment specification
         deploy_spec = client.vcenter.vm_template.LibraryItems.DeploySpec()
@@ -87,9 +96,9 @@ def deploy_vm_from_template(
         
         # Set disk customization
         if disk:
-            # Handle both list format (for backward compatibility) and dict format
+            # Handle different disk input formats
             if isinstance(disk, list):
-                # Convert list format to dict format
+                # List format: [{"datastore": "ds1"}, {"datastore": "ds2"}]
                 disk_overrides = {}
                 for i, disk_config in enumerate(disk):
                     disk_key = f"disk-{i}"
@@ -101,16 +110,29 @@ def deploy_vm_from_template(
                     disk_overrides[disk_key] = disk_storage
                 deploy_spec.disk_storage_overrides = disk_overrides
             elif isinstance(disk, dict):
-                # Handle dict format directly
-                disk_overrides = {}
-                for disk_key, disk_config in disk.items():
+                # Check if it's a single disk config or a dict of disk configs
+                if 'datastore' in disk or 'storage_policy' in disk:
+                    # Single disk config: {"datastore": "ds1", "storage_policy": "policy1"}
+                    disk_overrides = {}
+                    disk_key = "disk-0"
                     disk_storage = client.vcenter.vm_template.LibraryItems.DeploySpecDiskStorage()
-                    if 'datastore' in disk_config:
-                        disk_storage.datastore = disk_config['datastore']
-                    if 'storage_policy' in disk_config:
-                        disk_storage.storage_policy = disk_config['storage_policy']
+                    if 'datastore' in disk:
+                        disk_storage.datastore = disk['datastore']
+                    if 'storage_policy' in disk:
+                        disk_storage.storage_policy = disk['storage_policy']
                     disk_overrides[disk_key] = disk_storage
-                deploy_spec.disk_storage_overrides = disk_overrides
+                    deploy_spec.disk_storage_overrides = disk_overrides
+                else:
+                    # Dict of disk configs: {"disk-0": {"datastore": "ds1"}, "disk-1": {"datastore": "ds2"}}
+                    disk_overrides = {}
+                    for disk_key, disk_config in disk.items():
+                        disk_storage = client.vcenter.vm_template.LibraryItems.DeploySpecDiskStorage()
+                        if 'datastore' in disk_config:
+                            disk_storage.datastore = disk_config['datastore']
+                        if 'storage_policy' in disk_config:
+                            disk_storage.storage_policy = disk_config['storage_policy']
+                        disk_overrides[disk_key] = disk_storage
+                    deploy_spec.disk_storage_overrides = disk_overrides
         
         # Set network customization
         if networks:
@@ -146,9 +168,9 @@ def deploy_vm_from_template(
             deploy_spec.guest_customization = guest_spec
         
         # Deploy the VM
-        logger.info(f"Deploying VM '{vm_name}' from template '{template_id}'")
+        logger.info(f"Deploying VM '{vm_name}' from template '{resolved_template_id}'")
         vm_id, error = safe_api_call(
-            lambda: client.vcenter.vm_template.LibraryItems.deploy(template_id, deploy_spec),
+            lambda: client.vcenter.vm_template.LibraryItems.deploy(resolved_template_id, deploy_spec),
             f"Failed to deploy VM '{vm_name}' from template"
         )
         

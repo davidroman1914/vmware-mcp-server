@@ -79,7 +79,7 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "template_id": {"type": "string", "description": "Template ID to deploy from"},
+                    "template_id": {"type": "string", "description": "Template ID or name to deploy from"},
                     "vm_name": {"type": "string", "description": "Name for the new VM"},
                     "datacenter": {"type": "string", "description": "Target datacenter"},
                     "cluster": {"type": "string", "description": "Target cluster"},
@@ -93,15 +93,28 @@ async def list_tools() -> list[Tool]:
                         }
                     },
                     "disk": {
-                        "type": "array",
-                        "description": "Disk specifications (list format) or disk storage overrides (dict format)",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "datastore": {"type": "string", "description": "Target datastore for the disk"},
-                                "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "description": "Single disk configuration",
+                                "properties": {
+                                    "datastore": {"type": "string", "description": "Target datastore for the disk"},
+                                    "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
+                                }
+                            },
+                            {
+                                "type": "array",
+                                "description": "List of disk configurations",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "datastore": {"type": "string", "description": "Target datastore for the disk"},
+                                        "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
+                                    }
+                                }
                             }
-                        }
+                        ],
+                        "description": "Disk configuration - can be a single disk object or list of disk objects"
                     },
                     "networks": {
                         "type": "array",
@@ -164,15 +177,28 @@ async def list_tools() -> list[Tool]:
                         }
                     },
                     "disk": {
-                        "type": "array",
-                        "description": "Disk specifications (list format) or disk storage overrides (dict format)",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "datastore": {"type": "string", "description": "Target datastore for the disk"},
-                                "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "description": "Single disk configuration",
+                                "properties": {
+                                    "datastore": {"type": "string", "description": "Target datastore for the disk"},
+                                    "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
+                                }
+                            },
+                            {
+                                "type": "array",
+                                "description": "List of disk configurations",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "datastore": {"type": "string", "description": "Target datastore for the disk"},
+                                        "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
+                                    }
+                                }
                             }
-                        }
+                        ],
+                        "description": "Disk configuration - can be a single disk object or list of disk objects"
                     },
                     "networks": {
                         "type": "array",
