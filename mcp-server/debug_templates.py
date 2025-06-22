@@ -46,7 +46,52 @@ def debug_vm_properties():
         print("🔍 Debugging VM Properties for Template Detection")
         print("=" * 60)
         
-        # Get all VMs
+        # First, check Content Libraries (the correct way to find templates)
+        print("📚 Checking Content Libraries for VM Templates:")
+        print("-" * 50)
+        
+        try:
+            libraries = client.content.Library.list()
+            print(f"📋 Found {len(libraries)} Content Library(ies)")
+            
+            for library in libraries:
+                print(f"\n📚 Library: {library.name} (ID: {library.library})")
+                print(f"   • Type: {library.type}")
+                print(f"   • Version: {library.version}")
+                
+                try:
+                    items = client.content.library.Item.list(library.library)
+                    print(f"   • Items: {len(items)}")
+                    
+                    for item in items:
+                        print(f"      📄 Item: {item.name} (ID: {item.item})")
+                        print(f"         • Type: {item.type}")
+                        print(f"         • Description: {item.description}")
+                        
+                        # Check if this is a VM template
+                        if hasattr(item, 'type') and item.type == 'vm-template':
+                            print(f"         ✅ This is a VM template!")
+                            try:
+                                template_info = client.vcenter.vm_template.library_items.get(item.item)
+                                print(f"         • Guest OS: {template_info.guest_os}")
+                                print(f"         • CPU: {template_info.cpu.count} cores")
+                                print(f"         • Memory: {template_info.memory.size_mib} MB")
+                                print(f"         • VM Template ID: {template_info.vm_template}")
+                            except Exception as e:
+                                print(f"         ❌ Error getting template details: {e}")
+                        
+                except Exception as e:
+                    print(f"   ❌ Error listing items: {e}")
+                    
+        except Exception as e:
+            print(f"❌ Error accessing Content Libraries: {e}")
+            print("   This might be due to permissions or Content Library not being enabled")
+        
+        # Get all VMs (fallback method)
+        print("\n" + "="*60)
+        print("🔍 Checking Regular VMs (Fallback Method)")
+        print("="*60)
+        
         vms = client.vcenter.VM.list()
         print(f"📋 Found {len(vms)} total VMs\n")
         
@@ -136,7 +181,7 @@ def debug_vm_properties():
         else:
             print("❌ No potential templates found using current detection methods.")
             print("\n💡 Suggestions:")
-            print("   • Check if templates are stored in a specific folder")
+            print("   • Check if templates are stored in Content Libraries")
             print("   • Look for VMs with specific naming conventions")
             print("   • Check if templates have specific tags or annotations")
             print("   • Verify that templates are actually marked as templates in vCenter")
