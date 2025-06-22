@@ -25,5 +25,6 @@ py-modules = [
     "config",
     "test_power_management",
     "test_server",
-    "get_all_vms"
+    "get_all_vms",
+    "debug_templates"
 ] 

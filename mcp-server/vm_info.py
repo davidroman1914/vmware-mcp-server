@@ -69,8 +69,18 @@ def list_all_vms_text():
             # Safely get guest OS info
             guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
             result += f"   • Guest OS: {guest_os}\n"
-            result += f"   • CPU Count: {vm_info.cpu_count}\n"
-            result += f"   • Memory: {vm_info.memory_size_MiB} MB\n"
+            
+            # Safely get CPU count from nested cpu object
+            cpu_count = 'Unknown'
+            if hasattr(vm_info, 'cpu') and vm_info.cpu:
+                cpu_count = getattr(vm_info.cpu, 'count', 'Unknown')
+            result += f"   • CPU Count: {cpu_count}\n"
+            
+            # Safely get memory size from nested memory object
+            memory_mb = 'Unknown'
+            if hasattr(vm_info, 'memory') and vm_info.memory:
+                memory_mb = getattr(vm_info.memory, 'size_MiB', 'Unknown')
+            result += f"   • Memory: {memory_mb} MB\n"
             
             # Add IP address if available
             if hasattr(vm_info, 'guest') and vm_info.guest and vm_info.guest.ip_address:
@@ -108,8 +118,18 @@ def get_vm_info_text(vm_id: str):
         # Safely get guest OS info
         guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
         result += f"• Guest OS: {guest_os}\n"
-        result += f"• CPU Count: {vm_info.cpu_count}\n"
-        result += f"• Memory: {vm_info.memory_size_MiB} MB\n"
+        
+        # Safely get CPU count from nested cpu object
+        cpu_count = 'Unknown'
+        if hasattr(vm_info, 'cpu') and vm_info.cpu:
+            cpu_count = getattr(vm_info.cpu, 'count', 'Unknown')
+        result += f"• CPU Count: {cpu_count}\n"
+        
+        # Safely get memory size from nested memory object
+        memory_mb = 'Unknown'
+        if hasattr(vm_info, 'memory') and vm_info.memory:
+            memory_mb = getattr(vm_info.memory, 'size_MiB', 'Unknown')
+        result += f"• Memory: {memory_mb} MB\n"
         
         # Add hardware info if available
         if hasattr(vm_info, 'hardware'):
@@ -215,8 +235,18 @@ def list_templates_text():
             # Safely get guest OS info
             guest_os = getattr(template, 'guest_OS', None) or getattr(template, 'guest_os', None) or 'Unknown'
             result += f"   • Guest OS: {guest_os}\n"
-            result += f"   • CPU Count: {template.cpu_count}\n"
-            result += f"   • Memory: {template.memory_size_MiB} MB\n"
+            
+            # Safely get CPU count from nested cpu object
+            cpu_count = 'Unknown'
+            if hasattr(template, 'cpu') and template.cpu:
+                cpu_count = getattr(template.cpu, 'count', 'Unknown')
+            result += f"   • CPU Count: {cpu_count}\n"
+            
+            # Safely get memory size from nested memory object
+            memory_mb = 'Unknown'
+            if hasattr(template, 'memory') and template.memory:
+                memory_mb = getattr(template.memory, 'size_MiB', 'Unknown')
+            result += f"   • Memory: {memory_mb} MB\n"
             
             # Add hardware info if available
             if hasattr(template, 'hardware'):
