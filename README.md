@@ -1,6 +1,6 @@
 # VMware MCP Server
 
-A Model Context Protocol (MCP) server for VMware vCenter management. This server provides tools for listing VMs and getting detailed VM information through the MCP interface.
+A Model Context Protocol (MCP) server for VMware vCenter management. This server provides tools for listing VMs, getting detailed VM information, and managing VM power states through the MCP interface.
 
 ## Features
 
@@ -12,6 +12,11 @@ A Model Context Protocol (MCP) server for VMware vCenter management. This server
   - CPU details
   - Network adapters
   - Disk information
+- **Power Management**: Control VM power states with intelligent state checking:
+  - Power on VMs (only if powered off)
+  - Power off VMs (only if powered on)
+  - Restart VMs (only if powered on)
+  - Check current power state
 
 ## Prerequisites
 
@@ -53,7 +58,9 @@ vmware-mcp-server/
 │   ├── __init__.py       # Package initialization
 │   ├── server.py         # Main MCP server
 │   ├── list_vm.py        # VM listing functionality
-│   └── get_vm_info.py    # VM details functionality
+│   ├── get_vm_info.py    # VM details functionality
+│   ├── power_vm.py       # Power management functionality
+│   └── helpers.py        # Shared utility functions
 ├── main.py               # Entry point
 ├── pyproject.toml        # Dependencies and project config
 ├── Makefile              # Build and run commands
@@ -80,7 +87,7 @@ make stop             # Stop Docker containers
 
 ## MCP Tools
 
-The server provides two main tools:
+The server provides six main tools:
 
 ### 1. `list-vms`
 Lists all VMs in the vCenter server.
@@ -109,27 +116,92 @@ Get detailed information about a specific VM.
 
 **Example Output:**
 ```
-### Basic Information
-- **Name:** Test-VM-1
-- **ID:** vm-123
+📋 **VM Information: Test-VM-1**
+**ID:** vm-123
+**Power State:** POWERED_ON
+**Guest OS:** Ubuntu Linux (64-bit)
+**Guest Family:** LINUX
+**CPU Cores:** 2
+**CPU Sockets:** 1
+**Memory:** 4.0 GB
 
-### Power State
-- **Power State:** POWERED_ON
+💾 **Disks:**
+  • 100.0 GB (NVME)
 
-### Memory
-- **Memory:** 4096 MiB (4.0 GB)
-
-### CPU
-- **CPU:** 2 cores
-
-### Network Adapters
-- **Network Adapters:** 1
-  - **Network: VM Network | MAC: 00:50:56:8a:12:34 | Type: ASSIGNED | Connected: True**
-
-### Disks
-- **Disks:** 1
-  - **Capacity:** 100.0 GB
+🌐 **Network Adapters:**
+  • VM Network (MAC: 00:50:56:8a:12:34)
 ```
+
+### 3. `power-on-vm`
+Power on a VM if it's not already powered on.
+
+**Input Schema:**
+```json
+{
+  "vm_id": "vm-123"
+}
+```
+
+**Example Output:**
+```
+✅ Successfully powered on Test-VM-1
+```
+
+### 4. `power-off-vm`
+Power off a VM if it's not already powered off.
+
+**Input Schema:**
+```json
+{
+  "vm_id": "vm-123"
+}
+```
+
+**Example Output:**
+```
+✅ Successfully powered off Test-VM-1
+```
+
+### 5. `restart-vm`
+Restart a VM if it's powered on.
+
+**Input Schema:**
+```json
+{
+  "vm_id": "vm-123"
+}
+```
+
+**Example Output:**
+```
+✅ Successfully restarted Test-VM-1
+```
+
+### 6. `get-power-state`
+Get the current power state of a VM.
+
+**Input Schema:**
+```json
+{
+  "vm_id": "vm-123"
+}
+```
+
+**Example Output:**
+```
+🔌 **Power State for Test-VM-1:** POWERED_ON
+```
+
+## Power Management Logic
+
+The power management tools include intelligent state checking:
+
+- **Power On**: Only attempts to power on if the VM is currently powered off
+- **Power Off**: Only attempts to power off if the VM is currently powered on
+- **Restart**: Only attempts to restart if the VM is currently powered on
+- **State Checking**: All operations first verify the current power state before taking action
+
+This prevents unnecessary operations and provides clear feedback about the VM's current state.
 
 ## Troubleshooting
 
@@ -144,12 +216,19 @@ If you encounter SSL certificate errors, set `VCENTER_INSECURE=true` in your `.e
 ### Permission Issues
 - Make sure the user has sufficient permissions to access vCenter
 - The user should have at least read access to the vCenter inventory
+- For power operations, the user needs appropriate permissions to modify VM power states
+
+### Power Operation Issues
+- Ensure the VM is not in a transitional state (powering on/off)
+- Some VMs may have power protection enabled that prevents power operations
+- Check vCenter logs for detailed error messages
 
 ## Security Notes
 
 - Never commit your `.env` file with real credentials to version control
 - The `VCENTER_INSECURE` flag should only be used in development/testing environments
 - Consider using environment variables or secrets for production deployments
+- Power management operations can affect running services - use with caution
 
 ## Dependencies
 
