@@ -6,13 +6,8 @@ Test script for power management functionality
 import sys
 import asyncio
 import json
-from vm_operations import (
-    get_vsphere_client, 
-    power_on_vm_text, 
-    power_off_vm_text, 
-    restart_vm_text, 
-    get_vm_info_text
-)
+from power_management import power_on_vm_text, power_off_vm_text, restart_vm_text
+from vm_info import get_vm_info_text
 from config import Config
 
 def test_power_management():

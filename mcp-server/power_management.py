@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-VM Operations module for VMware vCenter
-Handles power management, VM info, and other VM-related operations
+Power Management module for VMware vCenter
+Handles power on, power off, and restart operations
 """
 
-import requests
-import urllib3
 from vmware.vapi.vsphere.client import create_vsphere_client
 from config import Config
 
@@ -21,6 +19,9 @@ def get_vsphere_client():
         raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
 
     # Create session with SSL handling
+    import requests
+    import urllib3
+    
     session = requests.Session()
     session.verify = not insecure
     
@@ -35,25 +36,6 @@ def get_vsphere_client():
         password=pwd, 
         session=session
     )
-
-def get_all_vms_text():
-    """Get all VMs and return formatted text."""
-    try:
-        client = get_vsphere_client()
-        vms = client.vcenter.VM.list()
-        
-        output = [f"📋 **Found {len(vms)} VMs in vCenter:**"]
-        
-        for vm in vms:
-            output.append(f"\n- **{vm.name}** (ID: {vm.vm})")
-            output.append(f"  • Power State: {vm.power_state}")
-            output.append(f"  • CPU Count: {vm.cpu_count}")
-            output.append(f"  • Memory: {vm.memory_size_mib} MB")
-        
-        return "\n".join(output)
-        
-    except Exception as e:
-        return f"❌ Error getting VMs: {str(e)}"
 
 def power_on_vm_text(vm_id: str):
     """Power on a VM and return formatted text."""
@@ -110,24 +92,4 @@ def restart_vm_text(vm_id: str):
         return f"✅ Successfully restarted VM '{vm_info.name}' (ID: {vm_id})"
         
     except Exception as e:
-        return f"❌ Error restarting VM {vm_id}: {str(e)}"
-
-def get_vm_info_text(vm_id: str):
-    """Get detailed VM info and return formatted text."""
-    try:
-        client = get_vsphere_client()
-        vm_info = client.vcenter.VM.get(vm_id)
-        
-        output = [f"📋 **VM Details for '{vm_info.name}':**"]
-        output.append(f"\n- **ID:** {vm_info.vm}")
-        output.append(f"- **Power State:** {vm_info.power_state}")
-        output.append(f"- **CPU Count:** {vm_info.cpu_count}")
-        output.append(f"- **Memory:** {vm_info.memory_size_mib} MB")
-        output.append(f"- **Guest OS:** {vm_info.guest_OS}")
-        output.append(f"- **Version:** {vm_info.version}")
-        output.append(f"- **Hardware Version:** {vm_info.hardware_version}")
-        
-        return "\n".join(output)
-        
-    except Exception as e:
-        return f"❌ Error getting VM info for {vm_id}: {str(e)}" 
+        return f"❌ Error restarting VM {vm_id}: {str(e)}" 

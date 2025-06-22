@@ -14,4 +14,16 @@ dependencies = [
 requires-python = ">=3.10"
 
 [tool.uv]
-dev-dependencies = [] 
+dev-dependencies = []
+
+[tool.setuptools]
+py-modules = [
+    "server",
+    "vm_info", 
+    "power_management",
+    "vm_creation",
+    "config",
+    "test_power_management",
+    "test_server",
+    "get_all_vms"
+] 

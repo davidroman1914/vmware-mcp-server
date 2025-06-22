@@ -68,7 +68,7 @@ def test_mcp_server():
             "id": 3,
             "method": "tools/call",
             "params": {
-                "name": "get-all-vms",
+                "name": "list_vms",
                 "arguments": {}
             }
         }
