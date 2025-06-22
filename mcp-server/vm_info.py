@@ -274,12 +274,29 @@ def list_templates_text():
                     for item in items:
                         # Check if this item is a VM template
                         if hasattr(item, 'type') and item.type == 'vm-template':
-                            content_templates.append({
-                                'name': item.name,
-                                'id': item.item,
-                                'library': library.name,
-                                'description': getattr(item, 'description', 'No description')
-                            })
+                            # Get detailed template info
+                            try:
+                                template_info = client.vcenter.vm_template.library_items.get(item.item)
+                                
+                                content_templates.append({
+                                    'name': item.name,
+                                    'id': item.item,
+                                    'library': library.name,
+                                    'description': getattr(item, 'description', 'No description'),
+                                    'template_info': template_info,
+                                    'urn': item.item  # This is the URN you saw
+                                })
+                            except Exception as e:
+                                # If detailed info fails, still include basic info
+                                content_templates.append({
+                                    'name': item.name,
+                                    'id': item.item,
+                                    'library': library.name,
+                                    'description': getattr(item, 'description', 'No description'),
+                                    'template_info': None,
+                                    'urn': item.item
+                                })
+                                
                 except Exception as e:
                     # Skip libraries that have errors
                     continue
@@ -291,9 +308,36 @@ def list_templates_text():
         if content_templates:
             result += f"✅ Found {len(content_templates)} Content Library template(s):\n\n"
             for template in content_templates:
-                result += f"📚 **{template['name']}** (ID: `{template['id']}`)\n"
+                result += f"📚 **{template['name']}**\n"
+                result += f"   • URN: `{template['urn']}`\n"
                 result += f"   • Library: {template['library']}\n"
-                result += f"   • Description: {template['description']}\n\n"
+                result += f"   • Description: {template['description']}\n"
+                
+                # Show detailed template info if available
+                if template['template_info']:
+                    template_info = template['template_info']
+                    
+                    # Guest OS
+                    if hasattr(template_info, 'guest_os'):
+                        result += f"   • Guest OS: {template_info.guest_os}\n"
+                    
+                    # CPU info
+                    if hasattr(template_info, 'cpu') and template_info.cpu:
+                        result += f"   • CPU Count: {template_info.cpu.count}\n"
+                    
+                    # Memory info
+                    if hasattr(template_info, 'memory') and template_info.memory:
+                        result += f"   • Memory: {template_info.memory.size_mib} MB\n"
+                    
+                    # VM Template ID
+                    if hasattr(template_info, 'vm_template'):
+                        result += f"   • VM Template ID: {template_info.vm_template}\n"
+                    
+                    # Hardware version
+                    if hasattr(template_info, 'hardware_version'):
+                        result += f"   • Hardware Version: {template_info.hardware_version}\n"
+                
+                result += "\n"
         else:
             result += "ℹ️ No Content Library templates found.\n\n"
         

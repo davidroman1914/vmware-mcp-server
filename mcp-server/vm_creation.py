@@ -310,4 +310,85 @@ def create_template_from_vm_text(vm_name: str, template_name: str, library_name:
             return f"❌ Error creating template: {str(e)}"
         
     except Exception as e:
-        return f"❌ Error creating template from VM: {str(e)}" 
+        return f"❌ Error creating template from VM: {str(e)}"
+
+def deploy_from_content_library_template_text(template_urn: str, vm_name: str, datacenter: str = None, 
+                                             datastore: str = None, cluster: str = None, 
+                                             cpu_count: int = None, memory_mb: int = None):
+    """Deploy a VM from a Content Library template and return formatted text."""
+    try:
+        client = get_vsphere_client()
+        
+        # Deploy from Content Library template
+        deployment_spec = client.vcenter.vm_template.library_items.DeploySpec()
+        
+        # Set placement if any placement parameters are provided
+        if any([datacenter, datastore, cluster]):
+            placement = client.vcenter.vm_template.library_items.PlacementSpec()
+            
+            if datacenter:
+                placement.datacenter = datacenter
+            if datastore:
+                placement.datastore = datastore
+            if cluster:
+                placement.cluster = cluster
+                
+            deployment_spec.placement = placement
+        
+        # Set hardware customization if specified
+        if cpu_count is not None or memory_mb is not None:
+            hardware_customization = client.vcenter.vm_template.library_items.HardwareCustomizationSpec()
+            
+            if cpu_count is not None:
+                cpu_spec = client.vcenter.vm_template.library_items.CpuUpdateSpec()
+                cpu_spec.count = cpu_count
+                hardware_customization.cpu_update = cpu_spec
+            
+            if memory_mb is not None:
+                memory_spec = client.vcenter.vm_template.library_items.MemoryUpdateSpec()
+                memory_spec.size_mib = memory_mb
+                hardware_customization.memory_update = memory_spec
+            
+            deployment_spec.hardware_customization = hardware_customization
+        
+        # Deploy the template
+        vm_id = client.vcenter.vm_template.library_items.deploy(template_urn, deployment_spec)
+        
+        # Get the deployed VM info
+        vm_info = client.vcenter.VM.get(vm_id)
+        
+        result = f"✅ Successfully deployed VM '{vm_name}' from Content Library template\n\n"
+        result += f"📋 VM Details:\n"
+        result += f"   • VM ID: {vm_id}\n"
+        result += f"   • Name: {vm_info.name}\n"
+        result += f"   • Power State: {vm_info.power_state}\n"
+        
+        # Safely get guest OS info
+        guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
+        result += f"   • Guest OS: {guest_os}\n"
+        
+        # Safely get CPU count from nested cpu object
+        cpu_count_actual = 'Unknown'
+        if hasattr(vm_info, 'cpu') and vm_info.cpu:
+            cpu_count_actual = getattr(vm_info.cpu, 'count', 'Unknown')
+        result += f"   • CPU Count: {cpu_count_actual}\n"
+        
+        # Safely get memory size from nested memory object
+        memory_mb_actual = 'Unknown'
+        if hasattr(vm_info, 'memory') and vm_info.memory:
+            memory_mb_actual = getattr(vm_info.memory, 'size_MiB', 'Unknown')
+        result += f"   • Memory: {memory_mb_actual} MB\n"
+        
+        if datacenter:
+            result += f"   • Datacenter: {datacenter}\n"
+        if datastore:
+            result += f"   • Datastore: {datastore}\n"
+        if cluster:
+            result += f"   • Cluster: {cluster}\n"
+        
+        result += f"\n💡 The VM is ready for customization and power on."
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error deploying from Content Library template: {str(e)}" 

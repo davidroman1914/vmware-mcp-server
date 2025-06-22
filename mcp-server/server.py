@@ -14,7 +14,8 @@ from vm_info import list_all_vms_text, get_vm_info_text, list_templates_text
 from power_management import power_on_vm_text, power_off_vm_text, restart_vm_text
 from vm_creation import (
     clone_vm_text, deploy_from_template_text, 
-    list_datastores_text, list_resource_pools_text, list_folders_text
+    list_datastores_text, list_resource_pools_text, list_folders_text,
+    deploy_from_content_library_template_text
 )
 
 class VMwareMCPServer:
@@ -204,6 +205,44 @@ class VMwareMCPServer:
                     "required": ["template_id", "new_vm_name"]
                 }
             },
+            "deploy_from_content_library": {
+                "name": "deploy_from_content_library",
+                "description": "Deploy a new VM from a Content Library template (different from VM templates)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "template_urn": {
+                            "type": "string",
+                            "description": "Content Library template URN (e.g., urn:vapi:com.vmware.content.library.Item:...)"
+                        },
+                        "vm_name": {
+                            "type": "string",
+                            "description": "Name for the new deployed VM"
+                        },
+                        "datacenter": {
+                            "type": "string",
+                            "description": "Target datacenter name (optional)"
+                        },
+                        "datastore": {
+                            "type": "string",
+                            "description": "Target datastore name (optional)"
+                        },
+                        "cluster": {
+                            "type": "string",
+                            "description": "Target cluster name (optional)"
+                        },
+                        "cpu_count": {
+                            "type": "integer",
+                            "description": "Number of CPU cores (optional)"
+                        },
+                        "memory_mb": {
+                            "type": "integer",
+                            "description": "Memory size in MB (optional)"
+                        }
+                    },
+                    "required": ["template_urn", "vm_name"]
+                }
+            },
             "list_datastores": {
                 "name": "list_datastores",
                 "description": "List all datastores with capacity and free space information",
@@ -317,6 +356,16 @@ class VMwareMCPServer:
                         ip_address=arguments.get("ip_address"),
                         netmask=arguments.get("netmask"),
                         gateway=arguments.get("gateway"),
+                        cpu_count=arguments.get("cpu_count"),
+                        memory_mb=arguments.get("memory_mb")
+                    )
+                elif tool_name == "deploy_from_content_library":
+                    result = deploy_from_content_library_template_text(
+                        template_urn=arguments["template_urn"],
+                        vm_name=arguments["vm_name"],
+                        datacenter=arguments.get("datacenter"),
+                        datastore=arguments.get("datastore"),
+                        cluster=arguments.get("cluster"),
                         cpu_count=arguments.get("cpu_count"),
                         memory_mb=arguments.get("memory_mb")
                     )
