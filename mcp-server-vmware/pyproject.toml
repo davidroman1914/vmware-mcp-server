@@ -11,11 +11,7 @@ dependencies = [
     "urllib3",
     "mcp",
 ]
-requires-python = ">=3.9"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires-python = ">=3.10"
 
 [tool.uv]
 dev-dependencies = [] 
