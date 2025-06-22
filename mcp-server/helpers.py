@@ -183,31 +183,31 @@ def list_templates(client) -> tuple[list, Optional[str]]:
         tuple: (templates_list, error_message) - templates_list is empty if error
     """
     try:
-        # Use the Content Library API to list items
-        from com.vmware.content.library_client import Item
-        
-        # Get all content library items
-        items = client.content.library.Item.list()
+        from com.vmware.content.library_client import Item, Library
         templates = []
-        
-        for item in items:
+        # Get all content libraries
+        libraries = client.content.library.Library.list()
+        for library_id in libraries:
             try:
-                # Get item details to check if it's a VM template
-                item_info = client.content.library.Item.get(item)
-                
-                # Check if this item is a VM template (has VM template metadata)
-                if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
-                    templates.append({
-                        'id': item,
-                        'name': item_info.name,
-                        'description': getattr(item_info, 'description', 'No description')
-                    })
+                # List items in this library
+                items = client.content.library.Item.list(library_id=library_id)
+                for item_id in items:
+                    try:
+                        item_info = client.content.library.Item.get(item_id)
+                        if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
+                            templates.append({
+                                'id': item_id,
+                                'name': item_info.name,
+                                'description': getattr(item_info, 'description', 'No description'),
+                                'library_id': library_id
+                            })
+                    except Exception as e:
+                        logger.debug(f"Error getting item info for {item_id}: {str(e)}")
+                        continue
             except Exception as e:
-                logger.debug(f"Error getting item info for {item}: {str(e)}")
+                logger.debug(f"Error listing items in library {library_id}: {str(e)}")
                 continue
-        
         return templates, None
-        
     except Exception as e:
         logger.error(f"Error listing templates: {str(e)}")
         return [], f"❌ Error listing templates: {str(e)}" 
