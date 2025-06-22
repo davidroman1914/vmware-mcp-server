@@ -94,7 +94,7 @@ docker-test: ## Build and run Docker container for testing with real vCenter
 		-e VCENTER_USERNAME=$(VCENTER_USERNAME) \
 		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
 		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
-		vmware-mcp-server-clean python test_templates_docker.py
+		vmware-mcp-server-clean python debug_templates.py
 
 .PHONY: docker-shell
 docker-shell: ## Start a shell in the Docker container for manual testing
