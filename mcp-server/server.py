@@ -10,7 +10,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 # Import from modular files
-from vm_info import list_all_vms_text, get_vm_info_text, list_templates_text, find_template_by_name_text
+from vm_info import list_all_vms_text, get_vm_info_text, list_templates_text, find_template_by_name_text, find_template_by_name_ansible_style_text
 from power_management import power_on_vm_text, power_off_vm_text, restart_vm_text
 from vm_creation import (
     clone_vm_text, deploy_from_template_text, deploy_from_content_library_template_text,
@@ -57,6 +57,20 @@ class VMwareMCPServer:
             "find_template_by_name": {
                 "name": "find_template_by_name",
                 "description": "Find a specific template by name using multiple discovery methods (Ansible-style)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "template_name": {
+                            "type": "string",
+                            "description": "Name of the template to search for (e.g., 'Ubuntu-Template-01')"
+                        }
+                    },
+                    "required": ["template_name"]
+                }
+            },
+            "find_template_by_name_ansible_style": {
+                "name": "find_template_by_name_ansible_style",
+                "description": "Find a template by name using Ansible's Container View approach (most comprehensive)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -390,6 +404,8 @@ class VMwareMCPServer:
                     result = list_folders_text()
                 elif tool_name == "find_template_by_name":
                     result = find_template_by_name_text(arguments["template_name"])
+                elif tool_name == "find_template_by_name_ansible_style":
+                    result = find_template_by_name_ansible_style_text(arguments["template_name"])
                 else:
                     raise ValueError(f"Unknown tool: {tool_name}")
                 

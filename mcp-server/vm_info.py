@@ -808,4 +808,201 @@ def find_template_by_name_text(template_name: str):
         return result
         
     except Exception as e:
-        return f"❌ Error searching for template '{template_name}': {str(e)}" 
+        return f"❌ Error searching for template '{template_name}': {str(e)}"
+
+def find_template_by_name_ansible_style_text(template_name: str):
+    """Find a template by name using Ansible's Container View approach."""
+    try:
+        client = get_vsphere_client()
+        
+        result = f"🔍 **Ansible-Style Template Search: '{template_name}'**\n\n"
+        
+        # ===== METHOD 1: Use VMware vCenter API (Ansible's approach) =====
+        result += "## 📋 Method 1: VMware vCenter API (Ansible's Approach)\n"
+        result += "Using vCenter's API to search all VMs and templates...\n\n"
+        
+        # Get all VMs using the VMware vCenter API
+        # This is equivalent to Ansible's approach but using our API
+        vms = client.vcenter.VM.list()
+        
+        template_found = None
+        all_vms = []
+        
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                all_vms.append(vm_info)
+                
+                # Check for exact name match
+                if vm_info.name.lower() == template_name.lower():
+                    template_found = vm_info
+                    result += f"✅ **EXACT MATCH FOUND**: {vm_info.name}\n"
+                    result += f"   • VM ID: {vm.vm}\n"
+                    result += f"   • Template Property: {getattr(vm_info, 'template', 'Not found')}\n"
+                    result += f"   • Power State: {getattr(vm_info, 'power_state', 'Unknown')}\n"
+                    
+                    # Safely get guest OS info
+                    guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
+                    result += f"   • Guest OS: {guest_os}\n"
+                    
+                    # Safely get CPU count from nested cpu object
+                    cpu_count = 'Unknown'
+                    if hasattr(vm_info, 'cpu') and vm_info.cpu:
+                        cpu_count = getattr(vm_info.cpu, 'count', 'Unknown')
+                    result += f"   • CPU Count: {cpu_count}\n"
+                    
+                    # Safely get memory size from nested memory object
+                    memory_mb = 'Unknown'
+                    if hasattr(vm_info, 'memory') and vm_info.memory:
+                        memory_mb = getattr(vm_info.memory, 'size_MiB', 'Unknown')
+                    result += f"   • Memory: {memory_mb} MB\n"
+                    
+                    # Get datastore info
+                    vm_datastore = getattr(vm_info, 'datastore', None)
+                    if vm_datastore:
+                        try:
+                            datastore_info = client.vcenter.Datastore.get(vm_datastore)
+                            result += f"   • Datastore: {datastore_info.name}\n"
+                        except:
+                            result += f"   • Datastore ID: {vm_datastore}\n"
+                    else:
+                        result += f"   • Datastore: Unknown\n"
+                    
+                    result += "\n"
+                    break
+                    
+            except Exception as e:
+                continue
+        
+        if not template_found:
+            result += "❌ No exact match found using VMware vCenter API.\n\n"
+            
+            # ===== METHOD 2: Search for partial matches =====
+            result += "## 🔍 Method 2: Partial Name Matches\n"
+            result += "Searching for VMs with similar names...\n\n"
+            
+            partial_matches = []
+            for vm_info in all_vms:
+                try:
+                    vm_name_lower = vm_info.name.lower()
+                    template_name_lower = template_name.lower()
+                    
+                    # Check for partial matches
+                    if (template_name_lower in vm_name_lower or 
+                        vm_name_lower in template_name_lower or
+                        any(word in vm_name_lower for word in template_name_lower.split())):
+                        
+                        partial_matches.append({
+                            'name': vm_info.name,
+                            'id': vm_info.vm if hasattr(vm_info, 'vm') else 'Unknown',
+                            'template': getattr(vm_info, 'template', False),
+                            'power_state': getattr(vm_info, 'power_state', 'Unknown'),
+                            'guest_os': getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
+                        })
+                        
+                except Exception as e:
+                    continue
+            
+            if partial_matches:
+                result += f"🎯 Found {len(partial_matches)} potential matches:\n\n"
+                for match in partial_matches:
+                    template_marker = " (TEMPLATE)" if match['template'] else ""
+                    result += f"📄 **{match['name']}{template_marker}**\n"
+                    result += f"   • VM ID: {match['id']}\n"
+                    result += f"   • Template Property: {match['template']}\n"
+                    result += f"   • Power State: {match['power_state']}\n"
+                    result += f"   • Guest OS: {match['guest_os']}\n"
+                    result += "\n"
+            else:
+                result += "❌ No partial matches found.\n\n"
+        
+        # ===== METHOD 3: List all templates found =====
+        result += "## 📋 Method 3: All Templates in vCenter\n"
+        result += "Listing all VMs that are marked as templates...\n\n"
+        
+        all_templates = []
+        for vm_info in all_vms:
+            try:
+                if getattr(vm_info, 'template', False):
+                    # Safely get CPU count from nested cpu object
+                    cpu_count = 'Unknown'
+                    if hasattr(vm_info, 'cpu') and vm_info.cpu:
+                        cpu_count = getattr(vm_info.cpu, 'count', 'Unknown')
+                    
+                    # Safely get memory size from nested memory object
+                    memory_mb = 'Unknown'
+                    if hasattr(vm_info, 'memory') and vm_info.memory:
+                        memory_mb = getattr(vm_info.memory, 'size_MiB', 'Unknown')
+                    
+                    all_templates.append({
+                        'name': vm_info.name,
+                        'id': vm_info.vm if hasattr(vm_info, 'vm') else 'Unknown',
+                        'power_state': getattr(vm_info, 'power_state', 'Unknown'),
+                        'guest_os': getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown',
+                        'cpu_count': cpu_count,
+                        'memory_mb': memory_mb
+                    })
+            except Exception as e:
+                continue
+        
+        if all_templates:
+            result += f"✅ Found {len(all_templates)} template(s) in vCenter:\n\n"
+            for template in all_templates:
+                result += f"📄 **{template['name']}**\n"
+                result += f"   • VM ID: {template['id']}\n"
+                result += f"   • Power State: {template['power_state']}\n"
+                result += f"   • Guest OS: {template['guest_os']}\n"
+                result += f"   • CPU Count: {template['cpu_count']}\n"
+                result += f"   • Memory: {template['memory_mb']} MB\n"
+                result += "\n"
+        else:
+            result += "❌ No templates found in vCenter.\n\n"
+        
+        # ===== SUMMARY =====
+        result += "## 📊 Summary\n"
+        
+        if template_found:
+            result += f"✅ **Template Found**: {template_found.name}\n"
+            result += f"   • Use VM ID: `{vm.vm}` for deployment\n"
+            result += f"   • Template Property: {getattr(template_found, 'template', 'Not found')}\n"
+            result += "\n"
+        else:
+            result += "❌ **No exact match found**\n"
+            if partial_matches:
+                result += f"💡 Found {len(partial_matches)} potential matches above.\n"
+            if all_templates:
+                result += f"💡 Found {len(all_templates)} templates in vCenter.\n"
+            result += "\n"
+        
+        result += "💡 **Next Steps:**\n"
+        if template_found:
+            result += "   • Use the VM ID with `deploy_from_template` tool\n"
+        else:
+            result += "   • Check the partial matches above\n"
+            result += "   • Verify the template name in vCenter UI\n"
+            result += "   • Check if template is in a different datacenter\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error in Ansible-style template search: {str(e)}"
+
+def get_vm_folder_path(vm_obj):
+    """Get the folder path for a VM object (helper function)."""
+    try:
+        paths = []
+        current_obj = vm_obj
+        
+        while hasattr(current_obj, 'parent') and current_obj.parent:
+            current_obj = current_obj.parent
+            if hasattr(current_obj, 'name'):
+                paths.append(current_obj.name)
+            # Stop at root folders
+            if hasattr(current_obj, '_moId') and current_obj._moId in ['group-d1', 'ha-folder-root']:
+                break
+        
+        paths.reverse()
+        return '/' + '/'.join(paths) if paths else None
+        
+    except Exception:
+        return None 
