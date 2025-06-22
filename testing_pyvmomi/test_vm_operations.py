@@ -640,9 +640,14 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                     nic_setting = vim.vm.customization.AdapterMapping()
                     nic_setting.adapter = vim.vm.customization.IPSettings()
                     
+                    # Use DHCP but with specific IP configuration
                     if 'ip_address' in customization_params:
                         nic_setting.adapter.ip = vim.vm.customization.FixedIp(ipAddress=customization_params['ip_address'])
-                        print(f"🔧 Setting IP address to {customization_params['ip_address']}")
+                        print(f"🔧 Setting IP address to {customization_params['ip_address']} (via DHCP)")
+                    else:
+                        # Use DHCP if no IP specified
+                        nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                        print(f"🔧 Using DHCP for IP address")
                     
                     if 'netmask' in customization_params:
                         nic_setting.adapter.subnetMask = customization_params['netmask']
@@ -652,7 +657,27 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                         nic_setting.adapter.gateway = [customization_params['gateway']]
                         print(f"🔧 Setting gateway to {customization_params['gateway']}")
                     
+                    # Set DNS servers if gateway is provided
+                    if 'gateway' in customization_params:
+                        nic_setting.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
+                        print(f"🔧 Setting DNS servers to 8.8.8.8, 8.8.4.4")
+                    
                     clone_spec.customization.nicSettingMap.append(nic_setting)
+                else:
+                    print(f"⚠️ No network found, using DHCP for all adapters")
+                    # Create a DHCP adapter mapping if no specific network found
+                    nic_setting = vim.vm.customization.AdapterMapping()
+                    nic_setting.adapter = vim.vm.customization.IPSettings()
+                    nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                    clone_spec.customization.nicSettingMap.append(nic_setting)
+            else:
+                # Even if no network customization, we need to provide adapter mappings
+                # to match the source VM's network adapters
+                print(f"🔧 Using DHCP for network adapters (no customization specified)")
+                nic_setting = vim.vm.customization.AdapterMapping()
+                nic_setting.adapter = vim.vm.customization.IPSettings()
+                nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                clone_spec.customization.nicSettingMap.append(nic_setting)
         
         print(f"\n🚀 Starting VM clone operation...")
         print(f"   • This may take several minutes depending on VM size")
