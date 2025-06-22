@@ -221,9 +221,22 @@ def list_templates_text():
                     pass
             
             if is_template:
-                # Add detection method to the template info
-                vm_info.detection_method = detection_method
-                templates.append(vm_info)
+                # Create a template object with the info we need
+                class TemplateInfo:
+                    def __init__(self, vm_id, vm_info, detection_method):
+                        self.vm = vm_id  # Use the original VM ID
+                        self.name = vm_info.name
+                        self.detection_method = detection_method
+                        # Copy other attributes from vm_info
+                        for attr in dir(vm_info):
+                            if not attr.startswith('_') and not callable(getattr(vm_info, attr)):
+                                try:
+                                    setattr(self, attr, getattr(vm_info, attr))
+                                except:
+                                    pass
+                
+                template = TemplateInfo(vm.vm, vm_info, detection_method)
+                templates.append(template)
         
         # If no templates found, show debug info to help understand what's available
         if not templates:
