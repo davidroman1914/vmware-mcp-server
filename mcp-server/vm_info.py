@@ -175,6 +175,9 @@ def list_templates_text():
         vms = client.vcenter.VM.list()
         vm_templates = []
         
+        # Debug info
+        debug_info = []
+        
         for vm in vms:
             try:
                 vm_info = client.vcenter.VM.get(vm.vm)
@@ -188,6 +191,27 @@ def list_templates_text():
                         'vm_info': vm_info,
                         'detection_method': 'template property'
                     })
+                    debug_info.append(f"Found template via template property: {vm_info.name}")
+                
+                # Also check for other template indicators
+                elif hasattr(vm_info, 'type') and vm_info.type == 'template':
+                    vm_templates.append({
+                        'name': vm_info.name,
+                        'id': vm.vm,
+                        'vm_info': vm_info,
+                        'detection_method': 'VM type'
+                    })
+                    debug_info.append(f"Found template via VM type: {vm_info.name}")
+                
+                # Check if name contains template patterns (fallback)
+                elif any(pattern in vm_info.name.lower() for pattern in ['template', 'tpl', 'gold', 'master', 'base']):
+                    vm_templates.append({
+                        'name': vm_info.name,
+                        'id': vm.vm,
+                        'vm_info': vm_info,
+                        'detection_method': 'name pattern'
+                    })
+                    debug_info.append(f"Found template via name pattern: {vm_info.name}")
                     
             except Exception as e:
                 # Skip VMs that have errors
@@ -235,8 +259,68 @@ def list_templates_text():
             result += "2. Right-click the VM in vSphere client\n"
             result += "3. Select 'Template' → 'Convert to Template'\n"
             result += "4. The VM will then appear as a template with template=True\n\n"
+            
+            # Show debug info
+            if debug_info:
+                result += "🔍 **Debug Info:**\n"
+                for info in debug_info:
+                    result += f"   • {info}\n"
+                result += "\n"
+            
+            # Show sample VM properties to help understand what's available
+            if vms:
+                try:
+                    sample_vm = client.vcenter.VM.get(vms[0].vm)
+                    result += "🔍 **Sample VM Properties:**\n"
+                    result += f"   • Name: {sample_vm.name}\n"
+                    result += f"   • Template Property: {getattr(sample_vm, 'template', 'Not found')}\n"
+                    result += f"   • VM Type: {getattr(sample_vm, 'type', 'Not found')}\n"
+                    result += f"   • Power State: {getattr(sample_vm, 'power_state', 'Unknown')}\n"
+                    result += f"   • Folder: {getattr(sample_vm, 'folder', 'Not found')}\n"
+                    result += "\n"
+                except:
+                    pass
         
-        # ===== SECTION 2: Content Library Templates =====
+        # ===== SECTION 2: Try Alternative Template Detection =====
+        result += "## 🔍 Alternative Template Detection\n"
+        result += "Trying additional methods to find templates that might be stored differently.\n\n"
+        
+        # Try to get templates from different views or folders
+        try:
+            # Check if there's a specific template folder or view
+            folders = client.vcenter.Folder.list()
+            template_folders = []
+            
+            for folder in folders:
+                try:
+                    folder_info = client.vcenter.Folder.get(folder.folder)
+                    if any(pattern in folder_info.name.lower() for pattern in ['template', 'tpl', 'gold', 'master', 'base']):
+                        template_folders.append(folder_info.name)
+                        
+                        # List VMs in this template folder
+                        try:
+                            folder_vms = client.vcenter.VM.list(folder=folder.folder)
+                            if folder_vms:
+                                result += f"📁 **Template Folder: {folder_info.name}**\n"
+                                result += f"   • VMs in folder: {len(folder_vms)}\n"
+                                for vm in folder_vms:
+                                    result += f"   • {vm.name} (ID: {vm.vm})\n"
+                                result += "\n"
+                        except Exception as e:
+                            result += f"   • Error listing VMs in folder: {str(e)}\n"
+                            
+                except Exception as e:
+                    continue
+            
+            if template_folders:
+                result += f"✅ Found {len(template_folders)} template-related folder(s): {', '.join(template_folders)}\n\n"
+            else:
+                result += "ℹ️ No template-related folders found.\n\n"
+                
+        except Exception as e:
+            result += f"⚠️ Could not check folders: {str(e)}\n\n"
+        
+        # ===== SECTION 3: Content Library Templates =====
         result += "## 📚 Content Library Templates\n"
         result += "These are advanced templates stored in Content Libraries.\n\n"
         
@@ -329,6 +413,7 @@ def list_templates_text():
         
         if total_templates == 0:
             result += "🔍 **Debug Info:** Run 'make debug-templates' for detailed analysis of your vCenter environment.\n"
+            result += "💡 **Note:** If you converted a VM to template but it's not showing up, it might be stored in a different location or view.\n"
         
         return result
         
