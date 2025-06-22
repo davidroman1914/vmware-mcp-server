@@ -7,7 +7,7 @@ from list_vm import list_vms_text
 from get_vm_info import get_vm_info_text
 from power_vm import power_on_vm, power_off_vm, restart_vm, get_power_state_text
 from vm_management import deploy_vm_from_template, create_template_from_vm, clone_vm
-from helpers import list_templates
+from helpers import list_templates, inspect_templates
 
 server = Server("vmware-mcp-server")
 
@@ -77,6 +77,11 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="list-templates",
             description="List all available templates in vCenter",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        Tool(
+            name="inspect-templates",
+            description="Inspect all VM templates with detailed information including metadata, files, and properties",
             inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
@@ -279,6 +284,37 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             output.append(f"  • {template['name']} (ID: {template['id']})")
             if template['description'] and template['description'] != 'No description':
                 output.append(f"    Description: {template['description']}")
+        
+        return [TextContent(type="text", text="\n".join(output))]
+    elif name == "inspect-templates":
+        from helpers import get_vsphere_client
+        client = get_vsphere_client()
+        templates, error = inspect_templates(client)
+        if error:
+            return [TextContent(type="text", text=error)]
+        if not templates:
+            return [TextContent(type="text", text="No templates found in vCenter.")]
+        
+        output = ["🔍 **Detailed Template Inspection:**"]
+        for template in templates:
+            output.append(f"\n📋 **Template: {template['name']}**")
+            output.append(f"  • ID: {template['id']}")
+            output.append(f"  • Library: {template['library_name']} ({template['library_id']})")
+            output.append(f"  • Description: {template['description']}")
+            output.append(f"  • Creation Time: {template['creation_time']}")
+            output.append(f"  • Last Modified: {template['last_modified_time']}")
+            output.append(f"  • Version: {template['version']}")
+            output.append(f"  • Cached: {template['cached']}")
+            
+            if template['metadata'] and template['metadata'].get('entries'):
+                output.append("  • Metadata:")
+                for entry in template['metadata']['entries']:
+                    output.append(f"    - {entry['key']}: {entry['value']}")
+            
+            if template.get('files'):
+                output.append("  • Files:")
+                for file_info in template['files']:
+                    output.append(f"    - {file_info['name']} ({file_info['size']} bytes)")
         
         return [TextContent(type="text", text="\n".join(output))]
     elif name == "deploy-vm-from-template":

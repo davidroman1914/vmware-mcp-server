@@ -183,17 +183,17 @@ def list_templates(client) -> tuple[list, Optional[str]]:
         tuple: (templates_list, error_message) - templates_list is empty if error
     """
     try:
-        from com.vmware.content.library_client import Item, Library
+        from com.vmware.content.library_client import Item
         templates = []
-        # Get all content libraries
-        libraries = client.content.library.Library.list()
+        # Get all content libraries (no import of Library)
+        libraries = client.content.library.list()
         for library_id in libraries:
             try:
                 # List items in this library
-                items = client.content.library.Item.list(library_id=library_id)
+                items = client.content.library.item.list(library_id=library_id)
                 for item_id in items:
                     try:
-                        item_info = client.content.library.Item.get(item_id)
+                        item_info = client.content.library.item.get(item_id)
                         if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
                             templates.append({
                                 'id': item_id,
@@ -210,4 +210,81 @@ def list_templates(client) -> tuple[list, Optional[str]]:
         return templates, None
     except Exception as e:
         logger.error(f"Error listing templates: {str(e)}")
-        return [], f"❌ Error listing templates: {str(e)}" 
+        return [], f"❌ Error listing templates: {str(e)}"
+
+def inspect_templates(client) -> tuple[list, Optional[str]]:
+    """
+    Inspect all VM templates with detailed information using Content Library API.
+    
+    Args:
+        client: vSphere client
+        
+    Returns:
+        tuple: (templates_info, error_message) - templates_info is empty if error
+    """
+    try:
+        from com.vmware.content.library_client import Item
+        templates_info = []
+        
+        # Get all content libraries
+        libraries = client.content.library.list()
+        
+        for library_id in libraries:
+            try:
+                # Get library info
+                library_info = client.content.library.get(library_id)
+                
+                # List items in this library
+                items = client.content.library.item.list(library_id=library_id)
+                
+                for item_id in items:
+                    try:
+                        item_info = client.content.library.item.get(item_id)
+                        
+                        # Check if this item is a VM template
+                        if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
+                            template_detail = {
+                                'id': item_id,
+                                'name': item_info.name,
+                                'description': getattr(item_info, 'description', 'No description'),
+                                'library_id': library_id,
+                                'library_name': library_info.name,
+                                'creation_time': getattr(item_info, 'creation_time', 'Unknown'),
+                                'last_modified_time': getattr(item_info, 'last_modified_time', 'Unknown'),
+                                'version': getattr(item_info, 'version', 'Unknown'),
+                                'cached': getattr(item_info, 'cached', False),
+                                'metadata': {}
+                            }
+                            
+                            # Try to get additional metadata
+                            try:
+                                metadata = client.content.library.item.metadata.get(item_id)
+                                if metadata:
+                                    template_detail['metadata'] = {
+                                        'entries': [{'key': entry.key, 'value': entry.value} for entry in metadata.entries]
+                                    }
+                            except Exception as e:
+                                logger.debug(f"Could not get metadata for template {item_id}: {str(e)}")
+                            
+                            # Try to get file info
+                            try:
+                                files = client.content.library.item.file.list(item_id)
+                                template_detail['files'] = [{'name': f.name, 'size': f.size} for f in files]
+                            except Exception as e:
+                                logger.debug(f"Could not get file info for template {item_id}: {str(e)}")
+                            
+                            templates_info.append(template_detail)
+                            
+                    except Exception as e:
+                        logger.debug(f"Error inspecting item {item_id}: {str(e)}")
+                        continue
+                        
+            except Exception as e:
+                logger.debug(f"Error inspecting library {library_id}: {str(e)}")
+                continue
+        
+        return templates_info, None
+        
+    except Exception as e:
+        logger.error(f"Error inspecting templates: {str(e)}")
+        return [], f"❌ Error inspecting templates: {str(e)}" 
