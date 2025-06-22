@@ -733,4 +733,11 @@ if __name__ == "__main__":
     test_template_deployment_by_name("ubuntu")
     
     # Test Ansible-style deployment
-    test_ansible_vmware_guest_style_deployment("ubuntu-template-01") 
+    test_ansible_vmware_guest_style_deployment("ubuntu-template-01")
+    
+    # Test deployment from the actual template found
+    print("\n" + "="*60)
+    print("🎯 TESTING DEPLOYMENT FROM FOUND TEMPLATE")
+    print("="*60)
+    test_template_deployment_by_name("ova-inf-k8s-master-uat-01")
+    test_ansible_vmware_guest_style_deployment("ova-inf-k8s-master-uat-01") 

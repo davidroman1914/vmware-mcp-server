@@ -91,8 +91,8 @@ docker-test: build ## Test the MCP server in Docker
 	@echo "🔍 Running vCenter environment analysis in Docker..."
 	docker run --rm \
 		--env-file .env \
-		vmware-mcp-server:latest \
-		python debug_templates.py
+		vmware-mcp-server-clean:latest \
+		python test_templates_docker.py
 
 .PHONY: docker-shell
 docker-shell: ## Start a shell in the Docker container for manual testing
