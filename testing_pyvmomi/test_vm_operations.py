@@ -607,6 +607,11 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
         if customization_params and any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']):
             clone_spec.customization = vim.vm.customization.Specification()
             
+            # Add global IP settings (required for Linux customization)
+            clone_spec.customization.globalIPSettings = vim.vm.customization.GlobalIPSettings()
+            if 'gateway' in customization_params:
+                clone_spec.customization.globalIPSettings.dnsServerList = ['8.8.8.8', '8.8.4.4']  # Default DNS servers
+            
             # Linux customization
             clone_spec.customization.identity = vim.vm.customization.LinuxPrep()
             

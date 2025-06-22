@@ -20,9 +20,9 @@ test: build ## Test VM operations with pyvmomi
 test-real: build ## Test VM operations with real vCenter (update credentials in Makefile)
 	@echo "🔍 Running pyvmomi VM operations test with real vCenter..."
 	docker run --rm \
-		-e VCENTER_HOST=your-vcenter-ip-here \
-		-e VCENTER_USER=your-username-here \
-		-e VCENTER_PASSWORD=your-password-here \
+		-e VCENTER_HOST=10.60.76.89 \
+		-e VCENTER_USER=david.roman \
+		-e VCENTER_PASSWORD=your_password_here \
 		-e VCENTER_INSECURE=true \
 		pyvmomi-test:latest
 
