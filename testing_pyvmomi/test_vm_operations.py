@@ -529,22 +529,259 @@ def test_vm_clone_with_customization_simulation():
         except:
             pass
 
+def create_vm_from_template_with_customization(source_vm, resources, customization_params=None):
+    """Actually create a VM by cloning from template with full customization."""
+    print(f"\n🚀 CREATING VM FROM TEMPLATE WITH CUSTOMIZATION")
+    print("=" * 50)
+    print("📋 This will actually create a new VM!")
+    print()
+    
+    # Generate test VM name
+    test_vm_name = f"test-clone-custom-{source_vm.name}-{int(time.time())}"
+    
+    print(f"📋 CLONE PARAMETERS:")
+    print(f"   • Source VM: {source_vm.name} (ID: {source_vm._moId})")
+    print(f"   • New VM Name: {test_vm_name}")
+    print(f"   • Datastore: {resources['datastore'].name}")
+    print(f"   • Resource Pool: {resources['resource_pool'].name}")
+    print(f"   • Folder: {resources['folder'].name}")
+    print()
+    
+    # Show customization parameters if provided
+    if customization_params:
+        print(f"📋 CUSTOMIZATION PARAMETERS:")
+        
+        # Template selection
+        if 'template_name' in customization_params:
+            print(f"   • Template: {customization_params['template_name']}")
+        
+        # Hardware customization
+        if 'cpu_count' in customization_params:
+            print(f"   • CPU Count: {customization_params['cpu_count']} cores")
+        if 'memory_mb' in customization_params:
+            print(f"   • Memory: {customization_params['memory_mb']} MB")
+        
+        # Network customization
+        if 'hostname' in customization_params:
+            print(f"   • Hostname: {customization_params['hostname']}")
+        if 'ip_address' in customization_params:
+            print(f"   • IP Address: {customization_params['ip_address']}")
+        if 'netmask' in customization_params:
+            print(f"   • Netmask: {customization_params['netmask']}")
+        if 'gateway' in customization_params:
+            print(f"   • Gateway: {customization_params['gateway']}")
+        if 'network_name' in customization_params:
+            print(f"   • Network: {customization_params['network_name']}")
+        
+        # Storage customization
+        if 'datastore_name' in customization_params:
+            print(f"   • Datastore: {customization_params['datastore_name']}")
+        if 'disk_size_gb' in customization_params:
+            print(f"   • Disk Size: {customization_params['disk_size_gb']} GB")
+        
+        print()
+    
+    try:
+        # Create the clone specification
+        clone_spec = vim.vm.CloneSpec()
+        clone_spec.location = vim.vm.RelocateSpec()
+        clone_spec.location.datastore = resources['datastore']
+        clone_spec.location.pool = resources['resource_pool']
+        clone_spec.location.folder = resources['folder']
+        clone_spec.powerOn = False
+        clone_spec.template = False
+        
+        # Add hardware customization if specified
+        if customization_params and ('cpu_count' in customization_params or 'memory_mb' in customization_params):
+            clone_spec.config = vim.vm.ConfigSpec()
+            
+            if 'cpu_count' in customization_params:
+                clone_spec.config.numCPUs = customization_params['cpu_count']
+                print(f"🔧 Setting CPU count to {customization_params['cpu_count']} cores")
+            
+            if 'memory_mb' in customization_params:
+                clone_spec.config.memoryMB = customization_params['memory_mb']
+                print(f"🔧 Setting memory to {customization_params['memory_mb']} MB")
+        
+        # Add guest customization if network parameters are specified
+        if customization_params and any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']):
+            clone_spec.customization = vim.vm.customization.Specification()
+            
+            # Linux customization
+            clone_spec.customization.identity = vim.vm.customization.LinuxPrep()
+            
+            if 'hostname' in customization_params:
+                clone_spec.customization.identity.hostName = vim.vm.customization.FixedName(name=customization_params['hostname'])
+                print(f"🔧 Setting hostname to {customization_params['hostname']}")
+            
+            # Network configuration
+            if any(k in customization_params for k in ['ip_address', 'netmask', 'gateway']):
+                clone_spec.customization.nicSettingMap = []
+                
+                # Find the network
+                network_obj = None
+                if 'network_name' in customization_params:
+                    # Try to find the network by name
+                    for network in resources.get('networks', []):
+                        if network.name == customization_params['network_name']:
+                            network_obj = network
+                            break
+                
+                # If network not found, use the first available
+                if not network_obj and resources.get('networks'):
+                    network_obj = resources['networks'][0]
+                
+                if network_obj:
+                    nic_setting = vim.vm.customization.AdapterMapping()
+                    nic_setting.adapter = vim.vm.customization.IPSettings()
+                    
+                    if 'ip_address' in customization_params:
+                        nic_setting.adapter.ip = vim.vm.customization.FixedIp(ipAddress=customization_params['ip_address'])
+                        print(f"🔧 Setting IP address to {customization_params['ip_address']}")
+                    
+                    if 'netmask' in customization_params:
+                        nic_setting.adapter.subnetMask = customization_params['netmask']
+                        print(f"🔧 Setting netmask to {customization_params['netmask']}")
+                    
+                    if 'gateway' in customization_params:
+                        nic_setting.adapter.gateway = [customization_params['gateway']]
+                        print(f"🔧 Setting gateway to {customization_params['gateway']}")
+                    
+                    clone_spec.customization.nicSettingMap.append(nic_setting)
+        
+        print(f"\n🚀 Starting VM clone operation...")
+        print(f"   • This may take several minutes depending on VM size")
+        print(f"   • You can monitor progress in vCenter")
+        
+        # Start the clone operation
+        task = source_vm.Clone(folder=resources['folder'], name=test_vm_name, spec=clone_spec)
+        
+        print(f"✅ Clone task started successfully!")
+        print(f"   • Task ID: {task.info.key}")
+        print(f"   • New VM will be named: {test_vm_name}")
+        print(f"   • VM will be created powered off")
+        
+        # Wait for the task to complete
+        print(f"\n⏳ Waiting for clone operation to complete...")
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            time.sleep(5)
+            print(f"   • Status: {task.info.state}")
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            print(f"✅ VM clone completed successfully!")
+            print(f"   • New VM: {test_vm_name}")
+            print(f"   • Location: {resources['folder'].name}")
+            print(f"   • Datastore: {resources['datastore'].name}")
+            print(f"   • Resource Pool: {resources['resource_pool'].name}")
+            
+            # Get the new VM object
+            new_vm = task.info.result
+            print(f"   • VM ID: {new_vm._moId}")
+            
+            return new_vm
+        else:
+            print(f"❌ VM clone failed!")
+            if hasattr(task.info, 'error') and task.info.error:
+                print(f"   • Error: {task.info.error.msg}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error creating VM: {str(e)}")
+        return None
+
+def test_actual_vm_creation():
+    """Test actual VM creation with full customization."""
+    print(f"\n🚀 ACTUAL VM CREATION WITH CUSTOMIZATION (pyvmomi)")
+    print("=" * 50)
+    print("📋 This will actually create a new VM!")
+    
+    try:
+        service_instance = get_vsphere_client()
+        content = service_instance.RetrieveContent()
+        
+        # Step 1: Define customization parameters
+        print(f"\n📋 Step 1: Defining customization parameters...")
+        customization_params = {
+            'template_name': 'Ubuntu-Template-01-TMPL',  # Custom template selection!
+            'hostname': 'test-vm-custom',
+            'ip_address': '10.60.76.93',
+            'netmask': '255.255.255.0',
+            'gateway': '10.60.76.1',
+            'network_name': 'PROD VMs',  # You can update this to match your network
+            'datastore_name': 'ova-inf-vh03-ds-2',  # Custom datastore selection
+            'cpu_count': 4,
+            'memory_mb': 4096,
+            'disk_size_gb': 65
+        }
+        
+        print(f"📋 Customization parameters:")
+        for key, value in customization_params.items():
+            print(f"   • {key}: {value}")
+        
+        # Step 2: Find a VM to clone from
+        print(f"\n📋 Step 2: Finding a VM to clone from...")
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        vms = container.view
+        
+        if not vms:
+            print("❌ No VMs found to clone from")
+            return
+        
+        # Step 3: Select source VM with custom template name
+        source_vm = select_source_vm(vms, customization_params.get('template_name'))
+        if not source_vm:
+            print("❌ No suitable VM found to clone from")
+            return
+        
+        # Step 4: Gather placement resources with custom datastore
+        resources = gather_placement_resources(content, customization_params.get('datastore_name'))
+        if not resources:
+            print("❌ Failed to gather placement resources")
+            return
+        
+        # Step 5: Actually create the VM with customization
+        new_vm = create_vm_from_template_with_customization(source_vm, resources, customization_params)
+        
+        if new_vm:
+            print(f"\n🎉 SUCCESS! New VM created:")
+            print(f"   • Name: {new_vm.name}")
+            print(f"   • ID: {new_vm._moId}")
+            print(f"   • Power State: {new_vm.runtime.powerState}")
+            print(f"   • You can now power it on in vCenter")
+        else:
+            print(f"\n❌ VM creation failed")
+        
+    except Exception as e:
+        print(f"❌ Error in VM creation: {str(e)}")
+    finally:
+        # Disconnect
+        try:
+            Disconnect(service_instance)
+        except:
+            pass
+
 if __name__ == "__main__":
-    print("🚀 VMware vCenter VM Operations Test (pyvmomi)")
-    print("=" * 60)
+    print("🧪 VMware vCenter VM Operations Test (pyvmomi)")
+    print("=" * 50)
     print("This test will:")
     print("1. List all VMs with detailed information")
     print("2. Simulate VM cloning (no actual VM created)")
     print("3. Simulate VM cloning with full customization")
-    print("=" * 60)
+    print("4. Actually create a VM with customization")
+    print("=" * 50)
     
-    # Test VM listing
+    # Test 1: List VMs
     test_list_vms()
     
-    # Test simple VM cloning simulation
+    # Test 2: Simple clone simulation
     test_simple_vm_clone_simulation()
     
-    # Test VM cloning with customization simulation
+    # Test 3: Clone with customization simulation
     test_vm_clone_with_customization_simulation()
+    
+    # Test 4: Actual VM creation
+    test_actual_vm_creation()
     
     print("\n✅ Test completed!") 
