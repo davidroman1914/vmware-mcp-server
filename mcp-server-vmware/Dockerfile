@@ -1,18 +1,29 @@
 FROM python:3.11-slim
 
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install uv for dependency management
+RUN pip install uv
 
-# Copy application code
+# Copy pyproject.toml and lock file
+COPY pyproject.toml uv.lock* ./
+
+# Install Python dependencies using uv
+RUN uv sync --frozen
+
+# Copy the application code
 COPY server.py .
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -21,5 +32,5 @@ USER appuser
 # Expose port (if needed for debugging)
 EXPOSE 8000
 
-# Run the MCP server
-CMD ["python", "server.py"] 
+# Run the MCP server using uv
+CMD ["uv", "run", "python", "server.py"] 

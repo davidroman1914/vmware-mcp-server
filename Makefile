@@ -30,15 +30,15 @@ shell: ## Start a Python shell with dependencies
 # Clean vmware-vcenter server targets
 .PHONY: run-vmware-server
 run-vmware-server: ## Run the clean vmware-vcenter MCP server locally
-	cd mcp-server-vmware && python server.py
+	cd mcp-server-vmware && uv run python server.py
 
 .PHONY: test-vmware-server
 test-vmware-server: ## Test the clean vmware-vcenter MCP server
-	cd mcp-server-vmware && python test_server.py
+	cd mcp-server-vmware && uv run python test_server.py
 
 .PHONY: install-vmware
 install-vmware: ## Install dependencies for clean vmware-vcenter server
-	cd mcp-server-vmware && pip install -r requirements.txt
+	cd mcp-server-vmware && uv sync
 
 # Docker workflow
 .PHONY: setup
