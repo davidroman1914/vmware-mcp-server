@@ -127,39 +127,53 @@ def clone_vm_text(source_vm_id: str, new_vm_name: str, datastore_id: str = None,
     except Exception as e:
         return f"❌ Error cloning VM {source_vm_id}: {str(e)}"
 
-def deploy_from_template_text(template_id: str, new_vm_name: str, datastore_id: str = None,
+def deploy_from_template_text(template_id: str, new_vm_name: str, datastore_id: str = None, 
                              resource_pool_id: str = None, folder_id: str = None,
-                             hostname: str = None, ip_address: str = None,
+                             hostname: str = None, ip_address: str = None, 
                              netmask: str = None, gateway: str = None,
                              cpu_count: int = None, memory_mb: int = None):
-    """Deploy a VM from template with optional customization and return formatted text."""
+    """Deploy a VM from a template (following Ansible approach)."""
     try:
         client = get_vsphere_client()
         
-        # Get template info
-        template_info = client.vcenter.VM.get(template_id)
+        # Determine if this is a Content Library template or VM template
+        is_content_library_template = template_id.startswith('urn:vapi:com.vmware.content.library.Item:')
         
-        # Verify it's actually a template
-        if not hasattr(template_info, 'template') or not template_info.template:
-            return f"❌ Error: VM '{template_info.name}' is not a template."
-        
-        # Use the same cloning logic since templates are just special VMs
-        return clone_vm_text(
-            source_vm_id=template_id,
-            new_vm_name=new_vm_name,
-            datastore_id=datastore_id,
-            resource_pool_id=resource_pool_id,
-            folder_id=folder_id,
-            hostname=hostname,
-            ip_address=ip_address,
-            netmask=netmask,
-            gateway=gateway,
-            cpu_count=cpu_count,
-            memory_mb=memory_mb
-        )
+        if is_content_library_template:
+            # For Content Library templates, we'll use the dedicated function
+            # but handle the parameters properly
+            datastore_param = datastore_id if datastore_id else None
+            cluster_param = resource_pool_id if resource_pool_id else None
+            cpu_param = cpu_count if cpu_count is not None else None
+            memory_param = memory_mb if memory_mb is not None else None
+            
+            return deploy_from_content_library_template_text(
+                template_urn=template_id,
+                vm_name=new_vm_name,
+                datacenter=None,
+                datastore=datastore_param,
+                cluster=cluster_param,
+                cpu_count=cpu_param,
+                memory_mb=memory_param
+            )
+        else:
+            # Clone from VM template (following Ansible approach)
+            return clone_vm_text(
+                source_vm_id=template_id,
+                new_vm_name=new_vm_name,
+                datastore_id=datastore_id,
+                resource_pool_id=resource_pool_id,
+                folder_id=folder_id,
+                hostname=hostname,
+                ip_address=ip_address,
+                netmask=netmask,
+                gateway=gateway,
+                cpu_count=cpu_count,
+                memory_mb=memory_mb
+            )
         
     except Exception as e:
-        return f"❌ Error deploying from template {template_id}: {str(e)}"
+        return f"❌ Error deploying from template: {str(e)}"
 
 def list_datastores_text():
     """List all datastores and return formatted text."""

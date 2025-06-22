@@ -682,9 +682,23 @@ This clean, modular implementation provides a solid foundation for VMware manage
 
 ## VM Template Management
 
-The server supports listing and deploying VMs from templates. VM templates are regular VMs in vCenter that have been converted to templates (they have a `template` property set to `True`).
+The server supports listing and deploying VMs from templates. Based on analysis of the [Ansible vmware_guest module](https://github.com/ansible-collections/community.vmware/blob/main/plugins/modules/vmware_guest.py), VMware has two main types of templates:
 
-### List Templates
+### **Template Types:**
+
+1. **VM Templates** - Regular VMs converted to templates
+   - These are VMs with `template` property set to `True`
+   - They appear in the VM inventory
+   - Deployed using `CloneVM_Task` API (same as VM cloning)
+
+2. **Content Library Templates** - Advanced templates stored in Content Libraries
+   - These are "pure templates" designed for template management
+   - Stored in Content Libraries with URNs like `urn:vapi:com.vmware.content.library.Item:...`
+   - Deployed using `DeployTemplate` API (different from cloning)
+
+### **Template Detection:**
+
+Our server intelligently detects both types:
 
 ```json
 {
@@ -698,7 +712,7 @@ The server supports listing and deploying VMs from templates. VM templates are r
 }
 ```
 
-**Response:**
+**Response shows both types:**
 ```json
 {
   "jsonrpc": "2.0",
@@ -707,14 +721,16 @@ The server supports listing and deploying VMs from templates. VM templates are r
     "content": [
       {
         "type": "text",
-        "text": "📋 Found 2 VM template(s):\n\n📄 **Ubuntu-Template** (ID: `vm-123`)\n   • Detection: template property\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 2\n   • Memory: 4096 MB\n   • Version: vmx-19\n   • Folder: /Templates\n\n📄 **Windows-Template** (ID: `vm-456`)\n   • Detection: template property\n   • Guest OS: Microsoft Windows Server 2019 (64-bit)\n   • CPU Count: 4\n   • Memory: 8192 MB\n   • Version: vmx-19\n   • Folder: /Templates\n"
+        "text": "📋 **VMware Template Analysis**\n\n## 🔧 VM Templates (Converted VMs)\n✅ Found 1 VM template(s):\n\n📄 **ova-inf-k8s-master-uat-01** (ID: `vm-123`)\n   • Detection: name pattern\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 2\n   • Memory: 4096 MB\n\n## 📚 Content Library Templates\n✅ Found 1 Content Library template(s):\n\n📚 **Ubuntu-Template-01-Testing**\n   • URN: `urn:vapi:com.vmware.content.library.Item:f677a69d-55b3-4f9b-a19e-5dfda38bb739:5c3e4892-782e-4a2e-b29e-7d06a182b4ce`\n   • Library: VM-Templates\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 2\n   • Memory: 4444 MB\n\n## 📊 Summary\nTotal templates found: **2**\n- VM Templates: 1\n- Content Library Templates: 1"
       }
     ]
   }
 }
 ```
 
-### Deploy VM from Template
+### **Deploy from Template (Ansible-style):**
+
+Following the Ansible approach, our `deploy_from_template` tool handles both types intelligently:
 
 ```json
 {
@@ -724,11 +740,8 @@ The server supports listing and deploying VMs from templates. VM templates are r
   "params": {
     "name": "deploy_from_template",
     "arguments": {
-      "template_id": "vm-123",
-      "vm_name": "new-ubuntu-vm",
-      "datacenter": "DC1",
-      "datastore": "datastore1",
-      "cluster": "Cluster1",
+      "template_id": "vm-123",  // VM template ID
+      "new_vm_name": "new-vm-from-template",
       "cpu_count": 4,
       "memory_mb": 8192
     }
@@ -736,44 +749,67 @@ The server supports listing and deploying VMs from templates. VM templates are r
 }
 ```
 
-**Response:**
+**Or for Content Library templates:**
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
-  "result": {
-    "content": [
-      {
-        "type": "text",
-        "text": "✅ Successfully deployed VM 'new-ubuntu-vm' from template 'Ubuntu-Template'\n\n📋 VM Details:\n   • VM ID: vm-789\n   • Name: new-ubuntu-vm\n   • Power State: POWERED_OFF\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 4\n   • Memory: 8192 MB\n   • Datacenter: DC1\n   • Datastore: datastore1\n   • Cluster: Cluster1\n\n💡 The VM is ready for customization and power on."
-      }
-    ]
+  "method": "tools/call",
+  "params": {
+    "name": "deploy_from_template",
+    "arguments": {
+      "template_id": "urn:vapi:com.vmware.content.library.Item:f677a69d-55b3-4f9b-a19e-5dfda38bb739:5c3e4892-782e-4a2e-b29e-7d06a182b4ce",
+      "new_vm_name": "new-vm-from-content-library",
+      "cpu_count": 4,
+      "memory_mb": 8192
+    }
   }
 }
 ```
 
-### Creating Templates
+### **How It Works (Under the Hood):**
 
-To create VM templates in vCenter:
+1. **Template Detection**: Server checks if `template_id` starts with `urn:vapi:com.vmware.content.library.Item:`
+2. **VM Templates**: Uses `CloneVM_Task` API (same as VM cloning)
+3. **Content Library Templates**: Uses `DeployTemplate` API (different process)
+4. **Unified Interface**: Same tool handles both types, just like Ansible's `vmware_guest` module
 
-1. **Using vCenter UI:**
-   - Right-click on an existing VM
-   - Select "Template" > "Convert to Template"
-   - The VM will then appear in the template list
+### **Creating Templates:**
 
-2. **Using the MCP Server:**
-   - First create a VM using `create_vm` or `clone_vm`
-   - Then convert it to a template using vCenter UI
-   - The template will then be available for deployment
+**VM Templates:**
+1. Right-click on a VM in vCenter
+2. Select "Template" > "Convert to Template"
+3. The VM becomes a template with `template=True`
 
-### Template Detection
+**Content Library Templates:**
+1. Use Content Library Manager in vCenter
+2. Create templates from VMs or import OVAs
+3. Templates are stored in Content Libraries with URNs
 
-The server uses multiple methods to detect templates:
+### **Comparison with Ansible:**
 
-1. **Primary Method:** Check if VM has `template` property set to `True`
-2. **Fallback Methods:**
-   - Check VM type property
-   - Check for template-related keywords in VM name
-   - Check for template-related keywords in folder location
+Our implementation follows the same pattern as Ansible's `vmware_guest` module:
 
-💡 **Note:** VM templates are regular VMs in the vCenter inventory with a specific property that distinguishes them from regular VMs. This is the standard VMware approach as documented in the [pyvmomi community samples](https://github.com/vmware/pyvmomi-community-samples/issues/209). 
+```yaml
+# Ansible playbook
+- name: Create VM from template
+  community.vmware.vmware_guest:
+    template: "{{ vars.vcenter.template }}"  # Handles both types!
+    name: "{{ item.host }}"
+    hardware: "{{ item.hardware }}"
+```
+
+```json
+// Our MCP equivalent
+{
+  "name": "deploy_from_template",
+  "arguments": {
+    "template_id": "template-id-or-urn",  // Handles both types!
+    "new_vm_name": "new-vm",
+    "cpu_count": 4,
+    "memory_mb": 8192
+  }
+}
+```
+
+💡 **Key Insight**: Templates are either "converted VMs" (VM templates) or "pure templates" (Content Library templates), but both can be deployed using the same unified interface, just like Ansible does! 
