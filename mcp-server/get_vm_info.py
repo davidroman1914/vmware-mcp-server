@@ -96,14 +96,21 @@ def get_vm_info_text(vm_id: str) -> str:
                 except (ValueError, TypeError):
                     output.append(f"**Memory:** {size_mib} MiB")
         
-        # Disk info - simplified and robust
+        # Disk info - get detailed info for each disk
         if disks:
             output.append("\n💾 **Disks:**")
             for disk in disks:
-                # Get basic disk info
                 disk_id = safe_get_attr(disk, 'disk', 'Unknown')
                 capacity = safe_get_attr(disk, 'capacity', 'Unknown')
                 disk_type = safe_get_attr(disk, 'type', 'Unknown')
+                
+                # If we don't have capacity from list, try to get detailed disk info
+                if capacity == 'Unknown' and disk_id != 'Unknown':
+                    try:
+                        detailed_disk = client.vcenter.vm.hardware.Disk.get(vm=vm.vm, disk=disk_id)
+                        capacity = safe_get_attr(detailed_disk, 'capacity', 'Unknown')
+                    except Exception as e:
+                        logger.debug(f"Could not get detailed disk info for {disk_id}: {str(e)}")
                 
                 # Format the output
                 if capacity != 'Unknown':
@@ -111,14 +118,24 @@ def get_vm_info_text(vm_id: str) -> str:
                 else:
                     output.append(f"  • {disk_type}")
         
-        # Network adapters - simplified and robust
+        # Network adapters - get detailed info for each NIC
         if nics:
             output.append("\n🌐 **Network Adapters:**")
             for nic in nics:
-                # Get basic NIC info
                 nic_id = safe_get_attr(nic, 'nic', 'Unknown')
                 mac_address = safe_get_attr(nic, 'mac_address', 'Unknown')
                 backing = safe_get_attr(nic, 'backing', 'Unknown')
+                
+                # If we don't have MAC or backing from list, try to get detailed NIC info
+                if (mac_address == 'Unknown' or backing == 'Unknown') and nic_id != 'Unknown':
+                    try:
+                        detailed_nic = client.vcenter.vm.hardware.Ethernet.get(vm=vm.vm, nic=nic_id)
+                        if mac_address == 'Unknown':
+                            mac_address = safe_get_attr(detailed_nic, 'mac_address', 'Unknown')
+                        if backing == 'Unknown':
+                            backing = safe_get_attr(detailed_nic, 'backing', 'Unknown')
+                    except Exception as e:
+                        logger.debug(f"Could not get detailed NIC info for {nic_id}: {str(e)}")
                 
                 # Get network name
                 network_name = "Unknown"
