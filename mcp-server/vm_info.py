@@ -173,33 +173,55 @@ def list_templates_text():
         # Debug: Let's see what properties are available
         debug_info = []
         
+        # Template detection patterns
+        template_patterns = ['template', 'tpl', 'gold', 'master', 'base']
+        
         for vm in vms:
             vm_info = client.vcenter.VM.get(vm.vm)
             
             # Multiple ways to detect templates:
             is_template = False
+            detection_method = None
             
             # Method 1: Check template property
             if hasattr(vm_info, 'template') and vm_info.template:
                 is_template = True
+                detection_method = "template property"
                 debug_info.append(f"Template detected via 'template' property: {vm_info.name}")
             
-            # Method 2: Check if VM name contains 'template' (case insensitive)
-            elif 'template' in vm_info.name.lower():
-                is_template = True
-                debug_info.append(f"Template detected via name pattern: {vm_info.name}")
-            
-            # Method 3: Check if VM is in a template folder (common pattern)
-            elif hasattr(vm_info, 'folder') and vm_info.folder and 'template' in vm_info.folder.lower():
-                is_template = True
-                debug_info.append(f"Template detected via folder: {vm_info.name}")
-            
-            # Method 4: Check VM type or other properties that might indicate template
+            # Method 2: Check VM type
             elif hasattr(vm_info, 'type') and vm_info.type == 'template':
                 is_template = True
+                detection_method = "VM type"
                 debug_info.append(f"Template detected via type: {vm_info.name}")
             
+            # Method 3: Check if VM name contains template patterns
+            elif any(pattern in vm_info.name.lower() for pattern in template_patterns):
+                is_template = True
+                detection_method = "name pattern"
+                debug_info.append(f"Template detected via name pattern: {vm_info.name}")
+            
+            # Method 4: Check if VM is in a template folder
+            elif hasattr(vm_info, 'folder') and vm_info.folder and any(pattern in vm_info.folder.lower() for pattern in template_patterns):
+                is_template = True
+                detection_method = "folder location"
+                debug_info.append(f"Template detected via folder: {vm_info.name}")
+            
+            # Method 5: Check for VMs in template-related folders (additional check)
+            if not is_template and hasattr(vm_info, 'folder') and vm_info.folder:
+                try:
+                    # Check if the folder name contains template-related keywords
+                    folder_name_lower = vm_info.folder.lower()
+                    if any(pattern in folder_name_lower for pattern in template_patterns):
+                        is_template = True
+                        detection_method = "folder name pattern"
+                        debug_info.append(f"Template detected via folder name pattern: {vm_info.name} (folder: {vm_info.folder})")
+                except:
+                    pass
+            
             if is_template:
+                # Add detection method to the template info
+                vm_info.detection_method = detection_method
                 templates.append(vm_info)
         
         # If no templates found, show debug info to help understand what's available
@@ -223,6 +245,7 @@ def list_templates_text():
                         except:
                             pass
                 debug_result += "\n💡 Tip: Templates might be identified by different properties depending on your vCenter setup."
+                debug_result += "\n💡 Run 'make debug-templates' for detailed analysis of your vCenter environment."
             
             return debug_result
         
@@ -231,6 +254,10 @@ def list_templates_text():
         
         for template in templates:
             result += f"📄 **{template.name}** (ID: `{template.vm}`)\n"
+            
+            # Show detection method
+            if hasattr(template, 'detection_method'):
+                result += f"   • Detection: {template.detection_method}\n"
             
             # Safely get guest OS info
             guest_os = getattr(template, 'guest_OS', None) or getattr(template, 'guest_os', None) or 'Unknown'

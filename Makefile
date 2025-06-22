@@ -86,6 +86,26 @@ format: ## Format code (if configured)
 debug-templates: ## Debug VM template detection (requires real vCenter connection)
 	cd mcp-server && uv run python debug_templates.py
 
+.PHONY: docker-test
+docker-test: ## Build and run Docker container for testing with real vCenter
+	docker build -t vmware-mcp-server-clean .
+	docker run --rm -it \
+		-e VCENTER_SERVER=$(VCENTER_SERVER) \
+		-e VCENTER_USERNAME=$(VCENTER_USERNAME) \
+		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
+		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
+		vmware-mcp-server-clean python test_templates_docker.py
+
+.PHONY: docker-shell
+docker-shell: ## Start a shell in the Docker container for manual testing
+	docker build -t vmware-mcp-server-clean .
+	docker run --rm -it \
+		-e VCENTER_SERVER=$(VCENTER_SERVER) \
+		-e VCENTER_USERNAME=$(VCENTER_USERNAME) \
+		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
+		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
+		vmware-mcp-server-clean /bin/bash
+
 .PHONY: clean-files
 clean-files: ## Clean up generated files
 	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache 

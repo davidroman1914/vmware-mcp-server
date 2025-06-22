@@ -141,8 +141,140 @@ def debug_vm_properties():
             print("   • Check if templates have specific tags or annotations")
             print("   • Verify that templates are actually marked as templates in vCenter")
         
+        # Additional analysis - check for any VMs that might be templates based on other criteria
+        print("\n🔍 Additional Template Analysis:")
+        print("=" * 40)
+        
+        # Check for VMs with specific naming patterns
+        template_patterns = ['template', 'tpl', 'gold', 'master', 'base']
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                vm_name_lower = vm_info.name.lower()
+                
+                for pattern in template_patterns:
+                    if pattern in vm_name_lower:
+                        print(f"   📄 Potential template by name pattern '{pattern}': {vm_info.name}")
+                        break
+                        
+            except Exception as e:
+                continue
+        
+        # Check for VMs in specific folders
+        print("\n📁 Checking for VMs in template-related folders:")
+        try:
+            folders = client.vcenter.Folder.list()
+            for folder in folders:
+                folder_name_lower = folder.name.lower()
+                if any(pattern in folder_name_lower for pattern in template_patterns):
+                    print(f"   📁 Found template-related folder: {folder.name} (ID: {folder.folder})")
+                    
+                    # List VMs in this folder
+                    try:
+                        folder_vms = client.vcenter.VM.list(folder=folder.folder)
+                        for vm in folder_vms:
+                            print(f"      📄 VM in template folder: {vm.vm}")
+                    except Exception as e:
+                        print(f"      ❌ Error listing VMs in folder: {e}")
+        except Exception as e:
+            print(f"   ❌ Error listing folders: {e}")
+        
     except Exception as e:
         print(f"❌ Error during debug: {e}")
 
+def test_template_detection_methods():
+    """Test different template detection methods."""
+    try:
+        client = get_vsphere_client()
+        
+        print("\n🧪 Testing Template Detection Methods:")
+        print("=" * 50)
+        
+        vms = client.vcenter.VM.list()
+        
+        # Method 1: Check if VM is marked as template
+        print("Method 1: Checking 'template' property")
+        template_vms = []
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                if hasattr(vm_info, 'template') and vm_info.template:
+                    template_vms.append(vm_info.name)
+            except:
+                continue
+        
+        if template_vms:
+            print(f"   ✅ Found {len(template_vms)} VMs with template=True:")
+            for name in template_vms:
+                print(f"      • {name}")
+        else:
+            print("   ❌ No VMs found with template=True")
+        
+        # Method 2: Check VM type
+        print("\nMethod 2: Checking VM type")
+        type_templates = []
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                if hasattr(vm_info, 'type') and vm_info.type == 'template':
+                    type_templates.append(vm_info.name)
+            except:
+                continue
+        
+        if type_templates:
+            print(f"   ✅ Found {len(type_templates)} VMs with type='template':")
+            for name in type_templates:
+                print(f"      • {name}")
+        else:
+            print("   ❌ No VMs found with type='template'")
+        
+        # Method 3: Check naming patterns
+        print("\nMethod 3: Checking naming patterns")
+        name_templates = []
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                if 'template' in vm_info.name.lower():
+                    name_templates.append(vm_info.name)
+            except:
+                continue
+        
+        if name_templates:
+            print(f"   ✅ Found {len(name_templates)} VMs with 'template' in name:")
+            for name in name_templates:
+                print(f"      • {name}")
+        else:
+            print("   ❌ No VMs found with 'template' in name")
+        
+        # Method 4: Check folder location
+        print("\nMethod 4: Checking folder location")
+        folder_templates = []
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                if hasattr(vm_info, 'folder') and vm_info.folder and 'template' in vm_info.folder.lower():
+                    folder_templates.append((vm_info.name, vm_info.folder))
+            except:
+                continue
+        
+        if folder_templates:
+            print(f"   ✅ Found {len(folder_templates)} VMs in template folders:")
+            for name, folder in folder_templates:
+                print(f"      • {name} (folder: {folder})")
+        else:
+            print("   ❌ No VMs found in template folders")
+        
+        # Summary
+        all_templates = set(template_vms + type_templates + name_templates + [name for name, _ in folder_templates])
+        print(f"\n📊 Summary: Found {len(all_templates)} unique potential templates")
+        if all_templates:
+            print("   Templates found:")
+            for name in sorted(all_templates):
+                print(f"      • {name}")
+        
+    except Exception as e:
+        print(f"❌ Error testing template detection: {e}")
+
 if __name__ == "__main__":
-    debug_vm_properties() 
+    debug_vm_properties()
+    test_template_detection_methods() 
