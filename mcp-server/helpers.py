@@ -149,4 +149,39 @@ def resolve_template_id(client, template_identifier: str) -> tuple[Optional[str]
         
     except Exception as e:
         logger.error(f"Error resolving template '{template_identifier}': {str(e)}")
-        return None, f"❌ Error resolving template '{template_identifier}': {str(e)}" 
+        return None, f"❌ Error resolving template '{template_identifier}': {str(e)}"
+
+def list_templates(client) -> tuple[list, Optional[str]]:
+    """
+    List available templates by checking VM properties.
+    
+    Args:
+        client: vSphere client
+        
+    Returns:
+        tuple: (templates_list, error_message) - templates_list is empty if error
+    """
+    try:
+        # Get all VMs
+        vms = client.vcenter.VM.list()
+        templates = []
+        
+        for vm in vms:
+            try:
+                # Try to get template info for this VM
+                template_info = client.vcenter.vm_template.LibraryItems.get(vm.vm)
+                if template_info:
+                    templates.append({
+                        'id': vm.vm,
+                        'name': vm.name,
+                        'description': getattr(template_info, 'description', 'No description')
+                    })
+            except Exception:
+                # This VM is not a template, skip it
+                continue
+        
+        return templates, None
+        
+    except Exception as e:
+        logger.error(f"Error listing templates: {str(e)}")
+        return [], f"❌ Error listing templates: {str(e)}" 

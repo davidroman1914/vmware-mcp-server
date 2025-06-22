@@ -76,6 +76,7 @@ docker-compose up
 - `list-vms` - List all VMs in vCenter
 - `get-vm-info` - Get detailed VM information
 - `get-power-state` - Check VM power state
+- `list-templates` - List all available templates
 
 #### Power Management
 - `power-on-vm` - Power on a VM
@@ -98,6 +99,13 @@ The VMware MCP Server understands natural language prompts and automatically sel
 Show me all the VMs in vCenter
 List all virtual machines
 What VMs do I have?
+```
+
+**List all templates:**
+```
+Show me all available templates
+List all templates in vCenter
+What templates do I have?
 ```
 
 **Get VM details:**

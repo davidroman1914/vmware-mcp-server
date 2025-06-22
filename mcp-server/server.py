@@ -7,6 +7,7 @@ from list_vm import list_vms_text
 from get_vm_info import get_vm_info_text
 from power_vm import power_on_vm, power_off_vm, restart_vm, get_power_state_text
 from vm_management import deploy_vm_from_template, create_template_from_vm, clone_vm
+from helpers import list_templates
 
 server = Server("vmware-mcp-server")
 
@@ -72,6 +73,11 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["vm_id"]
             }
+        ),
+        Tool(
+            name="list-templates",
+            description="List all available templates in vCenter",
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="deploy-vm-from-template",
@@ -259,6 +265,22 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if not vm_id:
             return [TextContent(type="text", text="Missing required argument: vm_id")]
         return [TextContent(type="text", text=get_power_state_text(vm_id))]
+    elif name == "list-templates":
+        from helpers import get_vsphere_client
+        client = get_vsphere_client()
+        templates, error = list_templates(client)
+        if error:
+            return [TextContent(type="text", text=error)]
+        if not templates:
+            return [TextContent(type="text", text="No templates found in vCenter.")]
+        
+        output = ["📋 **Available Templates:**"]
+        for template in templates:
+            output.append(f"  • {template['name']} (ID: {template['id']})")
+            if template['description'] and template['description'] != 'No description':
+                output.append(f"    Description: {template['description']}")
+        
+        return [TextContent(type="text", text="\n".join(output))]
     elif name == "deploy-vm-from-template":
         template_id = arguments.get("template_id")
         vm_name = arguments.get("vm_name")
