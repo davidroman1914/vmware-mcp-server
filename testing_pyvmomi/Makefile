@@ -22,7 +22,7 @@ test-real: build ## Test VM operations with real vCenter (update credentials in 
 	docker run --rm \
 		-e VCENTER_HOST=10.60.76.89 \
 		-e VCENTER_USER=david.roman \
-		-e VCENTER_PASSWORD=your_password_here \
+		-e VCENTER_PASSWORD=VMware1! \
 		-e VCENTER_INSECURE=true \
 		pyvmomi-test:latest
 

@@ -793,6 +793,20 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                         print(f"   • Netmask: {customization_params['netmask']}")
                     if 'gateway' in customization_params:
                         print(f"   • Gateway: {customization_params['gateway']}")
+                    
+                    # Debug the customization spec
+                    print(f"🔧 Customization spec details:")
+                    print(f"   • Global IP Settings: {clone_spec.customization.globalIPSettings}")
+                    print(f"   • Identity: {clone_spec.customization.identity}")
+                    print(f"   • NIC Settings Count: {len(clone_spec.customization.nicSettingMap)}")
+                    for i, nic in enumerate(clone_spec.customization.nicSettingMap):
+                        print(f"   • NIC {i}: {nic.adapter}")
+                        if hasattr(nic.adapter, 'ip'):
+                            print(f"     - IP: {nic.adapter.ip}")
+                        if hasattr(nic.adapter, 'subnetMask'):
+                            print(f"     - Netmask: {nic.adapter.subnetMask}")
+                        if hasattr(nic.adapter, 'gateway'):
+                            print(f"     - Gateway: {nic.adapter.gateway}")
                 else:
                     print(f"⚠️ No network found, using DHCP for all adapters")
                     # Create a DHCP adapter mapping if no specific network found
@@ -994,6 +1008,331 @@ def test_actual_vm_creation():
         except:
             pass
 
+def check_vm_network_config(si, vm_name):
+    """Check the network configuration of a VM after it's powered on"""
+    print(f"\n🔍 Checking network configuration for VM: {vm_name}")
+    
+    # Find the VM
+    content = si.RetrieveContent()
+    container = content.viewManager.CreateContainerView(content.rootFolder, [vim.VirtualMachine], True)
+    vm = None
+    for v in container.view:
+        if v.name == vm_name:
+            vm = v
+            break
+    container.Destroy()
+    
+    if not vm:
+        print(f"❌ VM {vm_name} not found")
+        return
+    
+    print(f"✅ Found VM: {vm.name}")
+    print(f"   • Power State: {vm.runtime.powerState}")
+    print(f"   • Guest ID: {vm.config.guestId}")
+    
+    # Check guest info
+    if vm.guest:
+        print(f"   • Guest Tools Status: {vm.guest.toolsRunningStatus}")
+        print(f"   • Guest IP Addresses: {vm.guest.ipAddress}")
+        
+        # Check network interfaces
+        if vm.guest.net:
+            print(f"   • Network Interfaces:")
+            for i, net in enumerate(vm.guest.net):
+                print(f"     - Interface {i}: {net.network}")
+                print(f"       • IP Addresses: {net.ipAddress}")
+                print(f"       • MAC Address: {net.macAddress}")
+                print(f"       • Connected: {net.connected}")
+                print(f"       • Device Config Id: {net.deviceConfigId}")
+        else:
+            print(f"   • No network interfaces found in guest info")
+    else:
+        print(f"   • No guest info available")
+    
+    # Check hardware configuration
+    if vm.config and vm.config.hardware:
+        print(f"   • Hardware Configuration:")
+        print(f"     - CPU Count: {vm.config.hardware.numCPU}")
+        print(f"     - Memory MB: {vm.config.hardware.memoryMB}")
+        
+        # Check network adapters
+        if vm.config.hardware.device:
+            print(f"     - Network Adapters:")
+            for device in vm.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                    print(f"       • {device.__class__.__name__}")
+                    print(f"         - MAC Address: {device.macAddress}")
+                    print(f"         - Connected: {device.connectable.connected}")
+                    print(f"         - Start Connected: {device.connectable.startConnected}")
+                    if hasattr(device, 'backing') and device.backing:
+                        if hasattr(device.backing, 'network'):
+                            print(f"         - Network: {device.backing.network.name}")
+                        elif hasattr(device.backing, 'port'):
+                            print(f"         - Port Group: {device.backing.port.portgroupKey}")
+    
+    print(f"🔍 Network check complete for {vm_name}\n")
+
+def clone_vm_with_customization(si, source_vm, clone_name, customization_params=None):
+    """Clone a VM with full customization using Ansible's approach"""
+    print(f"🔧 Cloning {source_vm.name} to {clone_name} with customization...")
+    
+    try:
+        content = si.RetrieveContent()
+        
+        # Get available resources
+        resources = get_available_resources(si)
+        if not resources:
+            return None
+        
+        # Create clone specification
+        clone_spec = vim.vm.CloneSpec()
+        clone_spec.location = vim.vm.RelocateSpec()
+        
+        # Set datastore
+        if 'datastore_name' in customization_params:
+            datastore_name = customization_params['datastore_name']
+            datastore_obj = None
+            for ds in resources.get('datastores', []):
+                if ds.name == datastore_name:
+                    datastore_obj = ds
+                    break
+            if datastore_obj:
+                clone_spec.location.datastore = datastore_obj
+                print(f"🔧 Using specified datastore: {datastore_name}")
+            else:
+                print(f"⚠️ Specified datastore '{datastore_name}' not found, using first available")
+                if resources.get('datastores'):
+                    clone_spec.location.datastore = resources['datastores'][0]
+        else:
+            # Use first available datastore
+            if resources.get('datastores'):
+                clone_spec.location.datastore = resources['datastores'][0]
+                print(f"🔧 Using datastore: {resources['datastores'][0].name}")
+        
+        # Set resource pool
+        if resources.get('resource_pools'):
+            clone_spec.location.pool = resources['resource_pools'][0]
+            print(f"🔧 Using resource pool: {resources['resource_pools'][0].name}")
+        
+        # Set host
+        if resources.get('hosts'):
+            clone_spec.location.host = resources['hosts'][0]
+            print(f"🔧 Using host: {resources['hosts'][0].name}")
+        
+        # Configure hardware customization
+        if any(k in customization_params for k in ['cpu_count', 'memory_mb', 'disk_size_gb']):
+            clone_spec.config = vim.vm.ConfigSpec()
+            clone_spec.config.deviceChange = []
+            
+            # CPU customization
+            if 'cpu_count' in customization_params:
+                clone_spec.config.numCPUs = customization_params['cpu_count']
+                print(f"🔧 Setting CPU count to {customization_params['cpu_count']}")
+            
+            # Memory customization
+            if 'memory_mb' in customization_params:
+                clone_spec.config.memoryMB = customization_params['memory_mb']
+                print(f"🔧 Setting memory to {customization_params['memory_mb']} MB")
+            
+            # Disk customization (if specified)
+            if 'disk_size_gb' in customization_params:
+                # Find the first disk and resize it
+                for device in source_vm.config.hardware.device:
+                    if isinstance(device, vim.vm.device.VirtualDisk):
+                        disk_spec = vim.vm.device.VirtualDeviceSpec()
+                        disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                        disk_spec.device = device
+                        disk_spec.device.capacityInKB = customization_params['disk_size_gb'] * 1024 * 1024
+                        clone_spec.config.deviceChange.append(disk_spec)
+                        print(f"🔧 Setting disk size to {customization_params['disk_size_gb']} GB")
+                        break
+        
+        # Add guest customization if network parameters are specified
+        if customization_params and any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']):
+            clone_spec.customization = vim.vm.customization.Specification()
+            
+            # Global IP settings (required for Linux customization)
+            clone_spec.customization.globalIPSettings = vim.vm.customization.GlobalIPSettings()
+            if 'gateway' in customization_params:
+                clone_spec.customization.globalIPSettings.dnsServerList = ['8.8.8.8', '8.8.4.4']
+            
+            # Linux customization
+            clone_spec.customization.identity = vim.vm.customization.LinuxPrep()
+            
+            if 'hostname' in customization_params:
+                clone_spec.customization.identity.hostName = vim.vm.customization.FixedName(name=customization_params['hostname'])
+                print(f"🔧 Setting hostname to {customization_params['hostname']}")
+            
+            # Network configuration - Use Ansible's exact approach
+            clone_spec.customization.nicSettingMap = []
+            
+            # Find the network
+            network_obj = None
+            if 'network_name' in customization_params:
+                for network in resources.get('networks', []):
+                    if network.name == customization_params['network_name']:
+                        network_obj = network
+                        break
+            
+            # If network not found, use the first available
+            if not network_obj and resources.get('networks'):
+                network_obj = resources['networks'][0]
+            
+            if network_obj:
+                # Create adapter mapping exactly like Ansible does
+                guest_map = vim.vm.customization.AdapterMapping()
+                guest_map.adapter = vim.vm.customization.IPSettings()
+                
+                # IP assignment logic - exactly like Ansible
+                if 'ip_address' in customization_params and 'netmask' in customization_params:
+                    guest_map.adapter.ip = vim.vm.customization.FixedIp()
+                    guest_map.adapter.ip.ipAddress = str(customization_params['ip_address'])
+                    guest_map.adapter.subnetMask = str(customization_params['netmask'])
+                    print(f"🔧 Setting fixed IP: {customization_params['ip_address']}/{customization_params['netmask']}")
+                else:
+                    # Use DHCP if no IP specified
+                    guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                    print(f"🔧 Using DHCP for IP assignment")
+                
+                # Gateway
+                if 'gateway' in customization_params:
+                    guest_map.adapter.gateway = [customization_params['gateway']]
+                    print(f"🔧 Setting gateway to {customization_params['gateway']}")
+                
+                # DNS servers
+                if 'gateway' in customization_params:
+                    guest_map.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
+                    print(f"🔧 Setting DNS servers to 8.8.8.8, 8.8.4.4")
+                
+                clone_spec.customization.nicSettingMap.append(guest_map)
+                print(f"🔧 Network adapter configured for: {network_obj.name}")
+                
+                # Debug the customization spec
+                print(f"🔧 Customization spec details:")
+                print(f"   • Global IP Settings: {clone_spec.customization.globalIPSettings}")
+                print(f"   • Identity: {clone_spec.customization.identity}")
+                print(f"   • NIC Settings Count: {len(clone_spec.customization.nicSettingMap)}")
+                for i, nic in enumerate(clone_spec.customization.nicSettingMap):
+                    print(f"   • NIC {i}: {nic.adapter}")
+                    if hasattr(nic.adapter, 'ip'):
+                        print(f"     - IP: {nic.adapter.ip}")
+                    if hasattr(nic.adapter, 'subnetMask'):
+                        print(f"     - Netmask: {nic.adapter.subnetMask}")
+                    if hasattr(nic.adapter, 'gateway'):
+                        print(f"     - Gateway: {nic.adapter.gateway}")
+            else:
+                print(f"⚠️ No network found, using DHCP for all adapters")
+                # Create a DHCP adapter mapping if no specific network found
+                guest_map = vim.vm.customization.AdapterMapping()
+                guest_map.adapter = vim.vm.customization.IPSettings()
+                guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                clone_spec.customization.nicSettingMap.append(guest_map)
+        
+        # Power off the VM before cloning
+        if source_vm.runtime.powerState == 'poweredOn':
+            print(f"🔌 Powering off source VM before cloning...")
+            task = source_vm.PowerOff()
+            wait_for_task(task)
+            if task.info.state != 'success':
+                print(f"❌ Failed to power off source VM: {task.info.error.msg}")
+                return None
+        
+        # Clone the VM
+        print(f"🚀 Starting VM clone...")
+        task = source_vm.Clone(folder=source_vm.parent, name=clone_name, spec=clone_spec)
+        wait_for_task(task)
+        
+        if task.info.state == 'success':
+            cloned_vm = task.info.result
+            print(f"✅ VM cloned successfully: {cloned_vm.name}")
+            return cloned_vm
+        else:
+            print(f"❌ Failed to clone VM: {task.info.error.msg}")
+            return None
+    
+    except Exception as e:
+        print(f"❌ Error cloning VM: {str(e)}")
+        return None
+
+def test_clone_vm_with_customization():
+    """Test cloning a VM with full customization"""
+    print("🚀 Testing VM cloning with customization...")
+    
+    # Connect to vCenter
+    si = get_vsphere_client()
+    if not si:
+        return
+    
+    try:
+        # Get available resources
+        resources = get_available_resources(si)
+        if not resources:
+            return
+        
+        # Find a source VM to clone from
+        source_vm = None
+        for vm in resources.get('vms', []):
+            if vm.runtime.powerState == 'poweredOff':
+                source_vm = vm
+                break
+        
+        if not source_vm:
+            print("❌ No powered-off VM found to clone from")
+            return
+        
+        print(f"✅ Found source VM: {source_vm.name}")
+        
+        # Customization parameters
+        customization_params = {
+            'hostname': 'test-clone-custom',
+            'ip_address': '192.168.1.100',
+            'netmask': '255.255.255.0',
+            'gateway': '192.168.1.1',
+            'network_name': 'VM Network',  # Adjust to your network name
+            'cpu_count': 2,
+            'memory_mb': 2048,
+            'disk_size_gb': 20
+        }
+        
+        # Clone the VM
+        clone_name = f"{source_vm.name}-clone-custom"
+        print(f"🔧 Cloning {source_vm.name} to {clone_name} with customization...")
+        
+        cloned_vm = clone_vm_with_customization(
+            si, source_vm, clone_name, customization_params
+        )
+        
+        if cloned_vm:
+            print(f"✅ VM cloned successfully: {cloned_vm.name}")
+            
+            # Wait a bit for the clone to complete
+            print("⏳ Waiting for clone to complete...")
+            time.sleep(10)
+            
+            # Power on the VM
+            print(f"🔌 Powering on {cloned_vm.name}...")
+            task = cloned_vm.PowerOn()
+            wait_for_task(task)
+            
+            if task.info.state == 'success':
+                print(f"✅ VM powered on successfully")
+                
+                # Wait for guest tools and customization
+                print("⏳ Waiting for guest tools and customization to complete...")
+                time.sleep(30)
+                
+                # Check network configuration
+                check_vm_network_config(si, cloned_vm.name)
+                
+            else:
+                print(f"❌ Failed to power on VM: {task.info.error.msg}")
+        else:
+            print("❌ Failed to clone VM")
+    
+    finally:
+        si.Disconnect()
+        print("🔌 Disconnected from vCenter")
+
 if __name__ == "__main__":
     print("🧪 VMware vCenter VM Operations Test (pyvmomi)")
     print("=" * 50)
@@ -1015,5 +1354,8 @@ if __name__ == "__main__":
     
     # Test 4: Actual VM creation
     test_actual_vm_creation()
+    
+    # Test 5: Clone VM with customization
+    test_clone_vm_with_customization()
     
     print("\n✅ Test completed!") 
