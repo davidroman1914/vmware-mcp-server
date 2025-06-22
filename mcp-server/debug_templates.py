@@ -245,6 +245,147 @@ def main():
         except Exception as e:
             print(f"❌ Error checking folders: {str(e)}")
         
+        # ===== CONTENT LIBRARY TEMPLATES =====
+        print(f"\n## 📚 CONTENT LIBRARY TEMPLATES")
+        print("Checking Content Libraries for VM templates...\n")
+        
+        try:
+            # Try to access Content Library API
+            libraries = client.content.Library.list()
+            print(f"📚 Found {len(libraries)} Content Library(ies)")
+            
+            for library in libraries:
+                try:
+                    library_info = client.content.Library.get(library.library)
+                    print(f"\n📚 **Library: {library_info.name}**")
+                    
+                    # List items in this library
+                    try:
+                        items = client.content.library.Item.list(library.library)
+                        print(f"   • Items in library: {len(items)}")
+                        
+                        for item in items:
+                            try:
+                                item_info = client.content.library.Item.get(library.library, item.item)
+                                print(f"   • {item_info.name} (Type: {getattr(item_info, 'type', 'Unknown')})")
+                                
+                                # Check if this is a VM template
+                                if hasattr(item_info, 'type') and item_info.type == 'vm-template':
+                                    print(f"      ✅ **VM TEMPLATE FOUND**: {item_info.name}")
+                                    print(f"         • Item ID: {item.item}")
+                                    print(f"         • Type: {item_info.type}")
+                                    
+                                    # Try to get more details about the template
+                                    try:
+                                        template_info = client.content.library.Item.get(library.library, item.item)
+                                        print(f"         • Description: {getattr(template_info, 'description', 'No description')}")
+                                        print(f"         • Creation Time: {getattr(template_info, 'creation_time', 'Unknown')}")
+                                    except Exception as e:
+                                        print(f"         • Error getting template details: {str(e)}")
+                                    
+                                    print()
+                                    
+                            except Exception as e:
+                                print(f"   • Error getting item info: {str(e)}")
+                                
+                    except Exception as e:
+                        print(f"   • Error listing items: {str(e)}")
+                        
+                except Exception as e:
+                    print(f"   • Error getting library info: {str(e)}")
+                    
+        except Exception as e:
+            print(f"❌ Error checking Content Libraries: {str(e)}")
+            print("   • Content Library API might not be available or accessible")
+        
+        # ===== AGGRESSIVE SEARCH FOR UBUNTU-TEMPLATE-01 =====
+        print(f"\n## 🔍 AGGRESSIVE SEARCH FOR UBUNTU-TEMPLATE-01")
+        print("Searching for the specific template name...\n")
+        
+        try:
+            # Search all VMs for the specific template name
+            all_vms = client.vcenter.VM.list()
+            found_ubuntu_template = False
+            
+            for vm in all_vms:
+                try:
+                    vm_info = client.vcenter.VM.get(vm.vm)
+                    
+                    # Check if this VM name contains "ubuntu" and "template"
+                    vm_name_lower = vm_info.name.lower()
+                    if 'ubuntu' in vm_name_lower and 'template' in vm_name_lower:
+                        print(f"🎯 **POTENTIAL UBUNTU TEMPLATE FOUND**: {vm_info.name}")
+                        print(f"   • VM ID: {vm.vm}")
+                        print(f"   • Template Property: {getattr(vm_info, 'template', 'Not found')}")
+                        print(f"   • Power State: {getattr(vm_info, 'power_state', 'Unknown')}")
+                        print(f"   • Guest OS: {getattr(vm_info, 'guest_OS', 'Unknown')}")
+                        
+                        # Try to get datastore info
+                        vm_datastore = getattr(vm_info, 'datastore', None)
+                        if vm_datastore:
+                            try:
+                                datastore_info = client.vcenter.Datastore.get(vm_datastore)
+                                print(f"   • Datastore: {datastore_info.name}")
+                            except:
+                                print(f"   • Datastore ID: {vm_datastore}")
+                        else:
+                            print(f"   • Datastore: Unknown")
+                        
+                        found_ubuntu_template = True
+                        print()
+                        
+                except Exception as e:
+                    continue
+            
+            if not found_ubuntu_template:
+                print("❌ No VM found with 'ubuntu' and 'template' in the name")
+                
+        except Exception as e:
+            print(f"❌ Error in aggressive search: {str(e)}")
+        
+        # ===== CHECK ALL VMs FOR ANY TEMPLATE-LIKE PROPERTIES =====
+        print(f"\n## 🔍 DETAILED VM ANALYSIS")
+        print("Analyzing all VMs for any template-like properties...\n")
+        
+        try:
+            all_vms = client.vcenter.VM.list()
+            print(f"📊 Analyzing {len(all_vms)} VMs for template properties...\n")
+            
+            for i, vm in enumerate(all_vms[:10]):  # Limit to first 10 for readability
+                try:
+                    vm_info = client.vcenter.VM.get(vm.vm)
+                    
+                    # Check all possible template indicators
+                    template_indicators = []
+                    
+                    if hasattr(vm_info, 'template') and vm_info.template:
+                        template_indicators.append("template=True")
+                    
+                    if hasattr(vm_info, 'type') and vm_info.type == 'template':
+                        template_indicators.append("type=template")
+                    
+                    if getattr(vm_info, 'power_state', '') == 'POWERED_OFF':
+                        template_indicators.append("powered_off")
+                    
+                    if any(pattern in vm_info.name.lower() for pattern in ['template', 'tpl', 'gold', 'master', 'base']):
+                        template_indicators.append("template_name")
+                    
+                    if template_indicators:
+                        print(f"📄 **{vm_info.name}** (ID: {vm.vm})")
+                        print(f"   • Indicators: {', '.join(template_indicators)}")
+                        print(f"   • Power State: {getattr(vm_info, 'power_state', 'Unknown')}")
+                        print(f"   • Guest OS: {getattr(vm_info, 'guest_OS', 'Unknown')}")
+                        print()
+                        
+                except Exception as e:
+                    continue
+            
+            if len(all_vms) > 10:
+                print(f"... and {len(all_vms) - 10} more VMs (showing first 10 only)")
+                
+        except Exception as e:
+            print(f"❌ Error in detailed analysis: {str(e)}")
+        
         print(f"\n## 🎯 RECOMMENDATIONS")
         if datastore_templates or all_templates:
             print("✅ Templates found! You can now use them with the MCP server.")
@@ -254,11 +395,16 @@ def main():
             print("   2. Templates might require different permissions to access")
             print("   3. Templates might be in a different inventory view")
             print("   4. The template property might not be set correctly")
+            print("   5. The template might be in a different datacenter")
+            print("   6. The template might be in a different folder structure")
             print("\n💡 Next steps:")
             print("   • Check Content Libraries in vCenter UI")
             print("   • Verify your user has permissions to view templates")
             print("   • Try creating a new template from a VM")
             print("   • Check if templates are in a different datacenter or folder")
+            print("   • Check if the template is in a different inventory view (VMs and Templates vs Hosts and Clusters)")
+            print("   • Try searching for the template by name in vCenter UI")
+            print("   • Check if the template is in a different folder or datacenter")
         
     except Exception as e:
         print(f"❌ Error: {str(e)}")
