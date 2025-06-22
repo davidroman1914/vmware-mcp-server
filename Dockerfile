@@ -14,16 +14,18 @@ RUN apt-get update && apt-get install -y \
 RUN pip install uv
 
 # Copy pyproject.toml and lock file from mcp-server
-COPY mcp-server/pyproject.toml mcp-server/uv.lock* ./
+COPY mcp-server/pyproject.toml ./
+COPY mcp-server/uv.lock ./
 
-# Install Python dependencies using uv
-RUN uv sync --frozen
+# Install Python dependencies globally using uv pip
+RUN uv pip install --system -e .
 
 # Copy all Python modules and files from mcp-server
 COPY mcp-server/*.py ./
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
