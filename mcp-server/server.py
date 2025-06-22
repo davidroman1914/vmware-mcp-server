@@ -10,12 +10,11 @@ import sys
 from typing import Any, Dict, List, Optional
 
 # Import from modular files
-from vm_info import list_all_vms_text, get_vm_info_text, list_templates_text
+from vm_info import list_all_vms_text, get_vm_info_text, list_templates_text, find_template_by_name_text
 from power_management import power_on_vm_text, power_off_vm_text, restart_vm_text
 from vm_creation import (
-    clone_vm_text, deploy_from_template_text, 
-    list_datastores_text, list_resource_pools_text, list_folders_text,
-    deploy_from_content_library_template_text
+    clone_vm_text, deploy_from_template_text, deploy_from_content_library_template_text,
+    list_datastores_text, list_resource_pools_text, list_folders_text
 )
 
 class VMwareMCPServer:
@@ -48,11 +47,25 @@ class VMwareMCPServer:
             },
             "list_templates": {
                 "name": "list_templates",
-                "description": "List all VM templates available for deployment",
+                "description": "List all available VM templates (both VM templates and Content Library templates)",
                 "inputSchema": {
-                    "type": "object", 
+                    "type": "object",
                     "properties": {},
                     "required": []
+                }
+            },
+            "find_template_by_name": {
+                "name": "find_template_by_name",
+                "description": "Find a specific template by name using multiple discovery methods (Ansible-style)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "template_name": {
+                            "type": "string",
+                            "description": "Name of the template to search for (e.g., 'Ubuntu-Template-01')"
+                        }
+                    },
+                    "required": ["template_name"]
                 }
             },
             "power_on_vm": {
@@ -375,6 +388,8 @@ class VMwareMCPServer:
                     result = list_resource_pools_text()
                 elif tool_name == "list_folders":
                     result = list_folders_text()
+                elif tool_name == "find_template_by_name":
+                    result = find_template_by_name_text(arguments["template_name"])
                 else:
                     raise ValueError(f"Unknown tool: {tool_name}")
                 

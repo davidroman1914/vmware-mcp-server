@@ -538,4 +538,274 @@ def list_templates_text():
         return result
         
     except Exception as e:
-        return f"❌ Error listing templates: {str(e)}" 
+        return f"❌ Error listing templates: {str(e)}"
+
+def find_template_by_name_text(template_name: str):
+    """Find a template by name using multiple discovery methods (Ansible-style)."""
+    try:
+        client = get_vsphere_client()
+        
+        result = f"🔍 **Searching for template: '{template_name}'**\n\n"
+        
+        # ===== METHOD 1: Search VM inventory by name =====
+        result += "## 📋 Method 1: VM Inventory Search\n"
+        result += "Searching all VMs for exact name match...\n\n"
+        
+        vms = client.vcenter.VM.list()
+        vm_template_found = None
+        
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                
+                # Check for exact name match
+                if vm_info.name.lower() == template_name.lower():
+                    vm_template_found = {
+                        'name': vm_info.name,
+                        'id': vm.vm,
+                        'type': 'vm_template',
+                        'template_property': getattr(vm_info, 'template', False),
+                        'power_state': getattr(vm_info, 'power_state', 'Unknown'),
+                        'guest_os': getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown',
+                        'vm_info': vm_info
+                    }
+                    
+                    result += f"✅ **VM Template Found**: {vm_info.name}\n"
+                    result += f"   • VM ID: `{vm.vm}`\n"
+                    result += f"   • Template Property: {vm_template_found['template_property']}\n"
+                    result += f"   • Power State: {vm_template_found['power_state']}\n"
+                    result += f"   • Guest OS: {vm_template_found['guest_os']}\n"
+                    
+                    # Get CPU and memory info
+                    cpu_count = 'Unknown'
+                    if hasattr(vm_info, 'cpu') and vm_info.cpu:
+                        cpu_count = getattr(vm_info.cpu, 'count', 'Unknown')
+                    result += f"   • CPU Count: {cpu_count}\n"
+                    
+                    memory_mb = 'Unknown'
+                    if hasattr(vm_info, 'memory') and vm_info.memory:
+                        memory_mb = getattr(vm_info.memory, 'size_MiB', 'Unknown')
+                    result += f"   • Memory: {memory_mb} MB\n"
+                    
+                    # Get datastore info
+                    vm_datastore = getattr(vm_info, 'datastore', None)
+                    if vm_datastore:
+                        try:
+                            datastore_info = client.vcenter.Datastore.get(vm_datastore)
+                            result += f"   • Datastore: {datastore_info.name}\n"
+                        except:
+                            result += f"   • Datastore ID: {vm_datastore}\n"
+                    else:
+                        result += f"   • Datastore: Unknown\n"
+                    
+                    result += "\n"
+                    break
+                    
+            except Exception as e:
+                continue
+        
+        if not vm_template_found:
+            result += "❌ No VM found with exact name match.\n\n"
+        
+        # ===== METHOD 2: Search Content Libraries by name =====
+        result += "## 📚 Method 2: Content Library Search\n"
+        result += "Searching Content Libraries for template name...\n\n"
+        
+        content_template_found = None
+        
+        try:
+            libraries = client.content.Library.list()
+            result += f"📚 Found {len(libraries)} Content Library(ies)\n\n"
+            
+            for library in libraries:
+                try:
+                    library_info = client.content.Library.get(library.library)
+                    result += f"📚 **Checking Library: {library_info.name}**\n"
+                    
+                    # List items in this library
+                    try:
+                        items = client.content.library.Item.list(library.library)
+                        result += f"   • Items in library: {len(items)}\n"
+                        
+                        for item in items:
+                            try:
+                                item_info = client.content.library.Item.get(library.library, item.item)
+                                
+                                # Check for exact name match
+                                if item_info.name.lower() == template_name.lower():
+                                    content_template_found = {
+                                        'name': item_info.name,
+                                        'id': item.item,
+                                        'type': 'content_library_template',
+                                        'library': library_info.name,
+                                        'urn': item.item,
+                                        'description': getattr(item_info, 'description', 'No description'),
+                                        'item_info': item_info
+                                    }
+                                    
+                                    result += f"   ✅ **Content Library Template Found**: {item_info.name}\n"
+                                    result += f"      • URN: `{item.item}`\n"
+                                    result += f"      • Library: {library_info.name}\n"
+                                    result += f"      • Type: {getattr(item_info, 'type', 'Unknown')}\n"
+                                    result += f"      • Description: {content_template_found['description']}\n"
+                                    
+                                    # Try to get detailed template info
+                                    try:
+                                        template_info = client.vcenter.vm_template.library_items.get(item.item)
+                                        
+                                        # Guest OS
+                                        if hasattr(template_info, 'guest_os'):
+                                            result += f"      • Guest OS: {template_info.guest_os}\n"
+                                        
+                                        # CPU info
+                                        if hasattr(template_info, 'cpu') and template_info.cpu:
+                                            result += f"      • CPU Count: {template_info.cpu.count}\n"
+                                        
+                                        # Memory info
+                                        if hasattr(template_info, 'memory') and template_info.memory:
+                                            result += f"      • Memory: {template_info.memory.size_mib} MB\n"
+                                        
+                                        # Hardware version
+                                        if hasattr(template_info, 'hardware_version'):
+                                            result += f"      • Hardware Version: {template_info.hardware_version}\n"
+                                            
+                                    except Exception as e:
+                                        result += f"      • Error getting detailed info: {str(e)}\n"
+                                    
+                                    result += "\n"
+                                    break
+                                    
+                            except Exception as e:
+                                continue
+                        
+                        if content_template_found:
+                            break
+                            
+                    except Exception as e:
+                        result += f"   • Error listing items: {str(e)}\n"
+                        
+                except Exception as e:
+                    result += f"   • Error getting library info: {str(e)}\n"
+                    
+        except Exception as e:
+            result += f"❌ Error checking Content Libraries: {str(e)}\n"
+        
+        if not content_template_found:
+            result += "❌ No Content Library template found with exact name match.\n\n"
+        
+        # ===== METHOD 3: Fuzzy name search =====
+        result += "## 🔍 Method 3: Fuzzy Name Search\n"
+        result += "Searching for partial name matches...\n\n"
+        
+        fuzzy_matches = []
+        
+        # Search VMs for partial matches
+        for vm in vms:
+            try:
+                vm_info = client.vcenter.VM.get(vm.vm)
+                vm_name_lower = vm_info.name.lower()
+                template_name_lower = template_name.lower()
+                
+                # Check if template name is contained in VM name or vice versa
+                if (template_name_lower in vm_name_lower or 
+                    vm_name_lower in template_name_lower or
+                    any(word in vm_name_lower for word in template_name_lower.split())):
+                    
+                    fuzzy_matches.append({
+                        'name': vm_info.name,
+                        'id': vm.vm,
+                        'type': 'vm',
+                        'template_property': getattr(vm_info, 'template', False),
+                        'power_state': getattr(vm_info, 'power_state', 'Unknown'),
+                        'match_type': 'fuzzy'
+                    })
+                    
+            except Exception as e:
+                continue
+        
+        # Search Content Libraries for partial matches
+        try:
+            for library in libraries:
+                try:
+                    items = client.content.library.Item.list(library.library)
+                    
+                    for item in items:
+                        try:
+                            item_info = client.content.library.Item.get(library.library, item.item)
+                            item_name_lower = item_info.name.lower()
+                            template_name_lower = template_name.lower()
+                            
+                            # Check if template name is contained in item name or vice versa
+                            if (template_name_lower in item_name_lower or 
+                                item_name_lower in template_name_lower or
+                                any(word in item_name_lower for word in template_name_lower.split())):
+                                
+                                fuzzy_matches.append({
+                                    'name': item_info.name,
+                                    'id': item.item,
+                                    'type': 'content_library',
+                                    'library': library.name,
+                                    'urn': item.item,
+                                    'match_type': 'fuzzy'
+                                })
+                                
+                        except Exception as e:
+                            continue
+                            
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            pass
+        
+        if fuzzy_matches:
+            result += f"🎯 Found {len(fuzzy_matches)} potential matches:\n\n"
+            for match in fuzzy_matches:
+                result += f"📄 **{match['name']}**\n"
+                result += f"   • Type: {match['type']}\n"
+                result += f"   • ID: {match['id']}\n"
+                
+                if match['type'] == 'vm':
+                    result += f"   • Template Property: {match['template_property']}\n"
+                    result += f"   • Power State: {match['power_state']}\n"
+                elif match['type'] == 'content_library':
+                    result += f"   • Library: {match['library']}\n"
+                    result += f"   • URN: `{match['urn']}`\n"
+                
+                result += "\n"
+        else:
+            result += "❌ No fuzzy matches found.\n\n"
+        
+        # ===== SUMMARY =====
+        result += "## 📊 Summary\n"
+        
+        if vm_template_found:
+            result += f"✅ **Exact VM Template Match**: {vm_template_found['name']}\n"
+            result += f"   • Use VM ID: `{vm_template_found['id']}` for deployment\n"
+            result += f"   • Template Property: {vm_template_found['template_property']}\n"
+            result += "\n"
+        elif content_template_found:
+            result += f"✅ **Exact Content Library Template Match**: {content_template_found['name']}\n"
+            result += f"   • Use URN: `{content_template_found['urn']}` for deployment\n"
+            result += f"   • Library: {content_template_found['library']}\n"
+            result += "\n"
+        else:
+            result += "❌ **No exact match found**\n"
+            if fuzzy_matches:
+                result += f"💡 Found {len(fuzzy_matches)} potential matches above. Check if any match your template.\n"
+            result += "\n"
+        
+        result += "💡 **Next Steps:**\n"
+        if vm_template_found:
+            result += "   • Use the VM ID with `deploy_from_template` tool\n"
+        elif content_template_found:
+            result += "   • Use the URN with `deploy_from_content_library` tool\n"
+        else:
+            result += "   • Check the fuzzy matches above\n"
+            result += "   • Verify the template name in vCenter UI\n"
+            result += "   • Check if template is in a different datacenter or folder\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error searching for template '{template_name}': {str(e)}" 
