@@ -754,7 +754,9 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                     # Try FixedIp first, fallback to DHCP if it fails
                     if 'ip_address' in customization_params:
                         try:
-                            nic_setting.adapter.ip = vim.vm.customization.FixedIp(ipAddress=customization_params['ip_address'])
+                            # Use Ansible's approach: create FixedIp() first, then set ipAddress
+                            nic_setting.adapter.ip = vim.vm.customization.FixedIp()
+                            nic_setting.adapter.ip.ipAddress = customization_params['ip_address']
                             print(f"🔧 Setting fixed IP address to {customization_params['ip_address']}")
                         except Exception as e:
                             print(f"⚠️ Failed to set fixed IP, using DHCP: {str(e)}")
