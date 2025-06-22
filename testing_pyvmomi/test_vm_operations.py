@@ -111,10 +111,42 @@ def test_list_vms():
         print(f"❌ Error listing VMs: {str(e)}")
         return None
 
-def select_source_vm(vms):
+def select_source_vm(vms, custom_template_name=None):
     """Select the best VM to clone from with detailed explanation."""
     print(f"\n🎯 VM SELECTION LOGIC:")
     print("=" * 50)
+    
+    if custom_template_name:
+        print(f"📋 Looking for specific template: '{custom_template_name}'")
+        print()
+        
+        # First, try to find the exact template name
+        for vm in vms:
+            try:
+                if vm.name.lower() == custom_template_name.lower():
+                    print(f"✅ SELECTED: Custom template found")
+                    print(f"   • Name: {vm.name}")
+                    print(f"   • ID: {vm._moId}")
+                    print(f"   • Power State: {vm.runtime.powerState}")
+                    if hasattr(vm, 'config') and vm.config and hasattr(vm.config, 'template'):
+                        print(f"   • Template: {vm.config.template}")
+                    return vm
+            except Exception:
+                continue
+        
+        print(f"❌ Template '{custom_template_name}' not found")
+        print(f"📋 Available VMs:")
+        for vm in vms[:5]:  # Show first 5 VMs
+            try:
+                print(f"   • {vm.name}")
+            except Exception:
+                print(f"   • {vm._moId}")
+        if len(vms) > 5:
+            print(f"   ... and {len(vms) - 5} more")
+        print()
+        print(f"⚠️ Falling back to automatic selection...")
+        print()
+    
     print("📋 Selection criteria (in order of preference):")
     print("   1. Powered-off VMs (safest for cloning)")
     print("   2. Templates (template=True)")
@@ -183,7 +215,7 @@ def select_source_vm(vms):
     
     return None
 
-def gather_placement_resources(content):
+def gather_placement_resources(content, custom_datastore_name=None):
     """Gather placement resources with detailed explanation."""
     print(f"\n🏗️ PLACEMENT RESOURCE SELECTION:")
     print("=" * 50)
@@ -196,11 +228,34 @@ def gather_placement_resources(content):
             content.rootFolder, [vim.Datastore], True
         ).view
         if datastores:
-            resources['datastore'] = datastores[0]
-            print(f"✅ Datastore: {datastores[0].name} (ID: {datastores[0]._moId})")
-            print(f"   • Type: {datastores[0].summary.type}")
-            print(f"   • Capacity: {datastores[0].summary.capacity / (1024**3):.1f} GB")
-            print(f"   • Free Space: {datastores[0].summary.freeSpace / (1024**3):.1f} GB")
+            # If custom datastore is specified, try to find it
+            if custom_datastore_name:
+                selected_datastore = None
+                for ds in datastores:
+                    if ds.name.lower() == custom_datastore_name.lower():
+                        selected_datastore = ds
+                        break
+                
+                if selected_datastore:
+                    resources['datastore'] = selected_datastore
+                    print(f"✅ Custom Datastore: {selected_datastore.name} (ID: {selected_datastore._moId})")
+                    print(f"   • Type: {selected_datastore.summary.type}")
+                    print(f"   • Capacity: {selected_datastore.summary.capacity / (1024**3):.1f} GB")
+                    print(f"   • Free Space: {selected_datastore.summary.freeSpace / (1024**3):.1f} GB")
+                else:
+                    print(f"⚠️ Custom datastore '{custom_datastore_name}' not found, using first available")
+                    resources['datastore'] = datastores[0]
+                    print(f"✅ Datastore: {datastores[0].name} (ID: {datastores[0]._moId})")
+                    print(f"   • Type: {datastores[0].summary.type}")
+                    print(f"   • Capacity: {datastores[0].summary.capacity / (1024**3):.1f} GB")
+                    print(f"   • Free Space: {datastores[0].summary.freeSpace / (1024**3):.1f} GB")
+            else:
+                # Use first available datastore
+                resources['datastore'] = datastores[0]
+                print(f"✅ Datastore: {datastores[0].name} (ID: {datastores[0]._moId})")
+                print(f"   • Type: {datastores[0].summary.type}")
+                print(f"   • Capacity: {datastores[0].summary.capacity / (1024**3):.1f} GB")
+                print(f"   • Free Space: {datastores[0].summary.freeSpace / (1024**3):.1f} GB")
         else:
             print("❌ No datastores found")
             return None
@@ -322,18 +377,174 @@ def test_simple_vm_clone_simulation():
         except:
             pass
 
+def simulate_vm_clone_with_customization(source_vm, resources, customization_params=None):
+    """Simulate VM cloning with full customization parameters."""
+    print(f"\n🧪 VM CLONING WITH CUSTOMIZATION SIMULATION (DRY RUN)")
+    print("=" * 50)
+    print("📋 This is a simulation - no actual VM will be created!")
+    print()
+    
+    # Generate test VM name
+    test_vm_name = f"test-clone-custom-{source_vm.name}-{int(time.time())}"
+    
+    print(f"📋 CLONE PARAMETERS:")
+    print(f"   • Source VM: {source_vm.name} (ID: {source_vm._moId})")
+    print(f"   • New VM Name: {test_vm_name}")
+    print(f"   • Datastore: {resources['datastore'].name}")
+    print(f"   • Resource Pool: {resources['resource_pool'].name}")
+    print(f"   • Folder: {resources['folder'].name}")
+    print()
+    
+    # Show customization parameters if provided
+    if customization_params:
+        print(f"📋 CUSTOMIZATION PARAMETERS:")
+        
+        # Template selection
+        if 'template_name' in customization_params:
+            print(f"   • Template: {customization_params['template_name']}")
+        
+        # Hardware customization
+        if 'cpu_count' in customization_params:
+            print(f"   • CPU Count: {customization_params['cpu_count']} cores")
+        if 'memory_mb' in customization_params:
+            print(f"   • Memory: {customization_params['memory_mb']} MB")
+        
+        # Network customization
+        if 'hostname' in customization_params:
+            print(f"   • Hostname: {customization_params['hostname']}")
+        if 'ip_address' in customization_params:
+            print(f"   • IP Address: {customization_params['ip_address']}")
+        if 'netmask' in customization_params:
+            print(f"   • Netmask: {customization_params['netmask']}")
+        if 'gateway' in customization_params:
+            print(f"   • Gateway: {customization_params['gateway']}")
+        if 'network_name' in customization_params:
+            print(f"   • Network: {customization_params['network_name']}")
+        
+        # Storage customization
+        if 'datastore_name' in customization_params:
+            print(f"   • Datastore: {customization_params['datastore_name']}")
+        if 'disk_size_gb' in customization_params:
+            print(f"   • Disk Size: {customization_params['disk_size_gb']} GB")
+        
+        print()
+    
+    print(f"📋 CLONE SPECIFICATION:")
+    print(f"   • Power On: False (VM will be created powered off)")
+    print(f"   • Template: False (VM will be a regular VM, not a template)")
+    
+    if customization_params:
+        print(f"   • Hardware Customization: {'Yes' if any(k in customization_params for k in ['cpu_count', 'memory_mb']) else 'No'}")
+        print(f"   • Network Customization: {'Yes' if any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']) else 'No'}")
+        print(f"   • Storage Customization: {'Yes' if any(k in customization_params for k in ['datastore_name', 'disk_size_gb']) else 'No'}")
+        print(f"   • Guest Customization: {'Yes' if any(k in customization_params for k in ['hostname', 'ip_address']) else 'No'}")
+    else:
+        print(f"   • Hardware: Same as source VM")
+        print(f"   • Customization: None (no guest customization)")
+    
+    print()
+    
+    print(f"📋 WHAT WOULD HAPPEN:")
+    print(f"   1. Clone task would be created")
+    print(f"   2. VM files would be copied to {resources['datastore'].name}")
+    print(f"   3. New VM would be registered in {resources['folder'].name}")
+    print(f"   4. VM would be placed in {resources['resource_pool'].name}")
+    
+    if customization_params:
+        if 'cpu_count' in customization_params or 'memory_mb' in customization_params:
+            print(f"   5. Hardware would be customized (CPU/Memory)")
+        if any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']):
+            print(f"   6. Guest OS would be customized (Network/Hostname)")
+        if 'disk_size_gb' in customization_params:
+            print(f"   7. Disk size would be customized")
+    
+    print(f"   8. VM would be created powered off")
+    print(f"   9. Task would complete successfully")
+    print()
+    
+    print(f"✅ SIMULATION COMPLETE - No actual VM created!")
+    print(f"💡 To actually create the VM, remove the simulation mode")
+
+def test_vm_clone_with_customization_simulation():
+    """Test VM cloning with full customization simulation."""
+    print(f"\n🧪 VM CLONING WITH CUSTOMIZATION SIMULATION (pyvmomi)")
+    print("=" * 50)
+    print("📋 This will simulate VM cloning with full customization")
+    
+    try:
+        service_instance = get_vsphere_client()
+        content = service_instance.RetrieveContent()
+        
+        # Step 1: Define customization parameters
+        print(f"\n📋 Step 1: Defining customization parameters...")
+        customization_params = {
+            'template_name': 'Ubuntu-Template-01-TMPL',  # Custom template selection!
+            'hostname': 'test-vm-custom',
+            'ip_address': '192.168.1.100',
+            'netmask': '255.255.255.0',
+            'gateway': '192.168.1.1',
+            'network_name': 'VM Network',  # You can update this to match your network
+            'datastore_name': 'ova-inf-vh03-ds-2',  # Custom datastore selection
+            'cpu_count': 4,
+            'memory_mb': 4096,
+            'disk_size_gb': 50
+        }
+        
+        print(f"📋 Customization parameters:")
+        for key, value in customization_params.items():
+            print(f"   • {key}: {value}")
+        
+        # Step 2: Find a VM to clone from
+        print(f"\n📋 Step 2: Finding a VM to clone from...")
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        vms = container.view
+        
+        if not vms:
+            print("❌ No VMs found to clone from")
+            return
+        
+        # Step 3: Select source VM with custom template name
+        source_vm = select_source_vm(vms, customization_params.get('template_name'))
+        if not source_vm:
+            print("❌ No suitable VM found to clone from")
+            return
+        
+        # Step 4: Gather placement resources with custom datastore
+        resources = gather_placement_resources(content, customization_params.get('datastore_name'))
+        if not resources:
+            print("❌ Failed to gather placement resources")
+            return
+        
+        # Step 5: Simulate the clone with customization
+        simulate_vm_clone_with_customization(source_vm, resources, customization_params)
+        
+    except Exception as e:
+        print(f"❌ Error in VM cloning simulation: {str(e)}")
+    finally:
+        # Disconnect
+        try:
+            Disconnect(service_instance)
+        except:
+            pass
+
 if __name__ == "__main__":
     print("🚀 VMware vCenter VM Operations Test (pyvmomi)")
     print("=" * 60)
     print("This test will:")
     print("1. List all VMs with detailed information")
     print("2. Simulate VM cloning (no actual VM created)")
+    print("3. Simulate VM cloning with full customization")
     print("=" * 60)
     
     # Test VM listing
     test_list_vms()
     
-    # Test VM cloning simulation
+    # Test simple VM cloning simulation
     test_simple_vm_clone_simulation()
+    
+    # Test VM cloning with customization simulation
+    test_vm_clone_with_customization_simulation()
     
     print("\n✅ Test completed!") 
