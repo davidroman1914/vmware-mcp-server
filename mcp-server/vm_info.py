@@ -166,12 +166,14 @@ def list_templates_text():
     try:
         client = get_vsphere_client()
         
-        # Get all VMs and filter for templates (the correct approach)
-        vms = client.vcenter.VM.list()
-        templates = []
+        result = "📋 **VMware Template Analysis**\n\n"
         
-        # Debug: Let's see what properties are available
-        debug_info = []
+        # ===== SECTION 1: VM Templates (Regular VMs converted to templates) =====
+        result += "## 🔧 VM Templates (Converted VMs)\n"
+        result += "These are regular VMs that have been converted to templates.\n\n"
+        
+        vms = client.vcenter.VM.list()
+        vm_templates = []
         
         # Template detection patterns
         template_patterns = ['template', 'tpl', 'gold', 'master', 'base']
@@ -184,47 +186,30 @@ def list_templates_text():
             detection_method = None
             
             # Method 1: Check if VM is marked as a template (primary method)
-            # Based on pyvmomi community samples, templates have a specific property
             if hasattr(vm_info, 'template') and vm_info.template:
                 is_template = True
                 detection_method = "template property"
-                debug_info.append(f"Template detected via 'template' property: {vm_info.name}")
             
             # Method 2: Check VM type
             elif hasattr(vm_info, 'type') and vm_info.type == 'template':
                 is_template = True
                 detection_method = "VM type"
-                debug_info.append(f"Template detected via type: {vm_info.name}")
             
             # Method 3: Check if VM name contains template patterns
             elif any(pattern in vm_info.name.lower() for pattern in template_patterns):
                 is_template = True
                 detection_method = "name pattern"
-                debug_info.append(f"Template detected via name pattern: {vm_info.name}")
             
             # Method 4: Check if VM is in a template folder
             elif hasattr(vm_info, 'folder') and vm_info.folder and any(pattern in vm_info.folder.lower() for pattern in template_patterns):
                 is_template = True
                 detection_method = "folder location"
-                debug_info.append(f"Template detected via folder: {vm_info.name}")
-            
-            # Method 5: Check for VMs in template-related folders (additional check)
-            if not is_template and hasattr(vm_info, 'folder') and vm_info.folder:
-                try:
-                    # Check if the folder name contains template-related keywords
-                    folder_name_lower = vm_info.folder.lower()
-                    if any(pattern in folder_name_lower for pattern in template_patterns):
-                        is_template = True
-                        detection_method = "folder name pattern"
-                        debug_info.append(f"Template detected via folder name pattern: {vm_info.name} (folder: {vm_info.folder})")
-                except:
-                    pass
             
             if is_template:
                 # Create a template object with the info we need
                 class TemplateInfo:
                     def __init__(self, vm_id, vm_info, detection_method):
-                        self.vm = vm_id  # Use the original VM ID
+                        self.vm = vm_id
                         self.name = vm_info.name
                         self.detection_method = detection_method
                         # Copy other attributes from vm_info
@@ -236,74 +221,130 @@ def list_templates_text():
                                     pass
                 
                 template = TemplateInfo(vm.vm, vm_info, detection_method)
-                templates.append(template)
+                vm_templates.append(template)
         
-        # If no templates found, show debug info to help understand what's available
-        if not templates:
-            debug_result = "ℹ️ No VM templates found in vCenter.\n\n"
-            debug_result += "🔍 Note: VM templates are regular VMs with a 'template' property set to True.\n"
-            debug_result += "💡 To create templates:\n"
-            debug_result += "   1. Right-click on a VM in vCenter and select 'Template' > 'Convert to Template'\n"
-            debug_result += "   2. Or use the vCenter UI to create templates from existing VMs\n"
-            debug_result += "   3. Templates will then appear in this list\n\n"
-            
-            if debug_info:
-                debug_result += "🔍 Debug information (fallback detection):\n"
-                for info in debug_info[:5]:  # Show first 5 debug entries
-                    debug_result += f"   • {info}\n"
-                debug_result += "\n"
-            
-            # Show some sample VM properties to help understand the structure
-            if vms:
-                sample_vm = client.vcenter.VM.get(vms[0].vm)
-                debug_result += "🔍 Sample VM properties available:\n"
-                for attr in dir(sample_vm):
-                    if not attr.startswith('_') and not callable(getattr(sample_vm, attr)):
-                        try:
-                            value = getattr(sample_vm, attr)
-                            debug_result += f"   • {attr}: {type(value).__name__}\n"
-                        except:
-                            pass
-                debug_result += "\n💡 Tip: Templates might be identified by different properties depending on your vCenter setup."
-                debug_result += "\n💡 Run 'make debug-templates' for detailed analysis of your vCenter environment."
-            
-            return debug_result
-        
-        # Format the output
-        result = f"📋 Found {len(templates)} VM template(s):\n\n"
-        
-        for template in templates:
-            result += f"📄 **{template.name}** (ID: `{template.vm}`)\n"
-            
-            # Show detection method
-            if hasattr(template, 'detection_method'):
+        if vm_templates:
+            result += f"✅ Found {len(vm_templates)} VM template(s):\n\n"
+            for template in vm_templates:
+                result += f"📄 **{template.name}** (ID: `{template.vm}`)\n"
                 result += f"   • Detection: {template.detection_method}\n"
+                
+                # Safely get guest OS info
+                guest_os = getattr(template, 'guest_OS', None) or getattr(template, 'guest_os', None) or 'Unknown'
+                result += f"   • Guest OS: {guest_os}\n"
+                
+                # Safely get CPU count from nested cpu object
+                cpu_count = 'Unknown'
+                if hasattr(template, 'cpu') and template.cpu:
+                    cpu_count = getattr(template.cpu, 'count', 'Unknown')
+                result += f"   • CPU Count: {cpu_count}\n"
+                
+                # Safely get memory size from nested memory object
+                memory_mb = 'Unknown'
+                if hasattr(template, 'memory') and template.memory:
+                    memory_mb = getattr(template.memory, 'size_MiB', 'Unknown')
+                result += f"   • Memory: {memory_mb} MB\n"
+                
+                # Add hardware info if available
+                if hasattr(template, 'hardware'):
+                    result += f"   • Version: {template.hardware.version}\n"
+                
+                # Add folder info if available
+                if hasattr(template, 'folder'):
+                    result += f"   • Folder: {template.folder}\n"
+                
+                result += "\n"
+        else:
+            result += "ℹ️ No VM templates found.\n\n"
+        
+        # ===== SECTION 2: Content Library Templates =====
+        result += "## 📚 Content Library Templates\n"
+        result += "These are advanced templates stored in Content Libraries.\n\n"
+        
+        content_templates = []
+        try:
+            # Get all content libraries
+            libraries = client.content.Library.list()
             
-            # Safely get guest OS info
-            guest_os = getattr(template, 'guest_OS', None) or getattr(template, 'guest_os', None) or 'Unknown'
-            result += f"   • Guest OS: {guest_os}\n"
+            for library in libraries:
+                try:
+                    # Get items in this library
+                    items = client.content.library.Item.list(library.library)
+                    
+                    for item in items:
+                        # Check if this item is a VM template
+                        if hasattr(item, 'type') and item.type == 'vm-template':
+                            content_templates.append({
+                                'name': item.name,
+                                'id': item.item,
+                                'library': library.name,
+                                'description': getattr(item, 'description', 'No description')
+                            })
+                except Exception as e:
+                    # Skip libraries that have errors
+                    continue
+                    
+        except Exception as e:
+            result += f"⚠️ Could not access Content Libraries: {str(e)}\n"
+            result += "   This might be due to permissions or Content Library not being enabled.\n\n"
+        
+        if content_templates:
+            result += f"✅ Found {len(content_templates)} Content Library template(s):\n\n"
+            for template in content_templates:
+                result += f"📚 **{template['name']}** (ID: `{template['id']}`)\n"
+                result += f"   • Library: {template['library']}\n"
+                result += f"   • Description: {template['description']}\n\n"
+        else:
+            result += "ℹ️ No Content Library templates found.\n\n"
+        
+        # ===== SECTION 3: vApp Templates =====
+        result += "## 🏗️ vApp Templates\n"
+        result += "These are multi-VM templates that can contain multiple VMs.\n\n"
+        
+        vapp_templates = []
+        try:
+            # Try to get vApp templates (if available)
+            vapps = client.vcenter.VApp.list()
             
-            # Safely get CPU count from nested cpu object
-            cpu_count = 'Unknown'
-            if hasattr(template, 'cpu') and template.cpu:
-                cpu_count = getattr(template.cpu, 'count', 'Unknown')
-            result += f"   • CPU Count: {cpu_count}\n"
-            
-            # Safely get memory size from nested memory object
-            memory_mb = 'Unknown'
-            if hasattr(template, 'memory') and template.memory:
-                memory_mb = getattr(template.memory, 'size_MiB', 'Unknown')
-            result += f"   • Memory: {memory_mb} MB\n"
-            
-            # Add hardware info if available
-            if hasattr(template, 'hardware'):
-                result += f"   • Version: {template.hardware.version}\n"
-            
-            # Add folder info if available
-            if hasattr(template, 'folder'):
-                result += f"   • Folder: {template.folder}\n"
-            
-            result += "\n"
+            for vapp in vapps:
+                try:
+                    vapp_info = client.vcenter.VApp.get(vapp.vapp)
+                    
+                    # Check if this is a template
+                    if hasattr(vapp_info, 'template') and vapp_info.template:
+                        vapp_templates.append({
+                            'name': vapp_info.name,
+                            'id': vapp.vapp,
+                            'power_state': getattr(vapp_info, 'power_state', 'Unknown')
+                        })
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            result += f"⚠️ Could not access vApp templates: {str(e)}\n\n"
+        
+        if vapp_templates:
+            result += f"✅ Found {len(vapp_templates)} vApp template(s):\n\n"
+            for template in vapp_templates:
+                result += f"🏗️ **{template['name']}** (ID: `{template['id']}`)\n"
+                result += f"   • Power State: {template['power_state']}\n\n"
+        else:
+            result += "ℹ️ No vApp templates found.\n\n"
+        
+        # ===== SUMMARY =====
+        total_templates = len(vm_templates) + len(content_templates) + len(vapp_templates)
+        result += f"## 📊 Summary\n"
+        result += f"Total templates found: **{total_templates}**\n"
+        result += f"- VM Templates: {len(vm_templates)}\n"
+        result += f"- Content Library Templates: {len(content_templates)}\n"
+        result += f"- vApp Templates: {len(vapp_templates)}\n\n"
+        
+        if total_templates == 0:
+            result += "💡 **To create templates:**\n"
+            result += "1. **VM Templates:** Right-click on a VM → Template → Convert to Template\n"
+            result += "2. **Content Library Templates:** Use Content Library Manager in vCenter\n"
+            result += "3. **vApp Templates:** Create vApps and convert them to templates\n\n"
+            result += "🔍 **Debug Info:** Run 'make debug-templates' for detailed analysis.\n"
         
         return result
         
