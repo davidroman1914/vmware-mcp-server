@@ -42,8 +42,8 @@ def get_vsphere_client():
 
 def analyze_template_vm_relationship():
     """Analyze the relationship between templates and virtual machines."""
-    print("🔍 Analyzing Template-VM Relationship")
-    print("=" * 60)
+    print("🔍 Analyzing Template-VM Relationship (Official VMware Approach)")
+    print("=" * 70)
     
     try:
         client = get_vsphere_client()
@@ -64,41 +64,16 @@ def analyze_template_vm_relationship():
             try:
                 vm_info = client.vcenter.VM.get(vm.vm)
                 
-                # Check if this is a template
+                # Check if this VM has been converted to a template
+                # According to VMware docs, templates are VMs with template=True
                 is_template = False
-                detection_method = None
                 template_properties = {}
                 
-                # Method 1: Check template property (primary method)
+                # Check template property (the official way)
                 if hasattr(vm_info, 'template'):
                     template_properties['template_property'] = vm_info.template
                     if vm_info.template:
                         is_template = True
-                        detection_method = "template property"
-                
-                # Method 2: Check VM type
-                if hasattr(vm_info, 'type'):
-                    template_properties['vm_type'] = vm_info.type
-                    if vm_info.type == 'template':
-                        is_template = True
-                        detection_method = "VM type"
-                
-                # Method 3: Check name patterns
-                template_patterns = ['template', 'tpl', 'gold', 'master', 'base']
-                name_matches = [pattern for pattern in template_patterns if pattern in vm_info.name.lower()]
-                if name_matches:
-                    template_properties['name_patterns'] = name_matches
-                    if not is_template:
-                        is_template = True
-                        detection_method = "name pattern"
-                
-                # Method 4: Check folder location
-                if hasattr(vm_info, 'folder'):
-                    template_properties['folder'] = vm_info.folder
-                    if vm_info.folder and any(pattern in vm_info.folder.lower() for pattern in template_patterns):
-                        if not is_template:
-                            is_template = True
-                            detection_method = "folder pattern"
                 
                 # Collect all properties for analysis
                 all_properties = {}
@@ -116,7 +91,6 @@ def analyze_template_vm_relationship():
                     templates_found.append({
                         'name': vm_info.name,
                         'id': vm.vm,
-                        'detection_method': detection_method,
                         'properties': template_properties,
                         'vm_info': vm_info
                     })
@@ -136,19 +110,13 @@ def analyze_template_vm_relationship():
         print("=" * 60)
         
         if templates_found:
-            print(f"✅ Found {len(templates_found)} template(s):")
+            print(f"✅ Found {len(templates_found)} template(s) (VMs converted to templates):")
             print()
             
             for template in templates_found:
-                print(f"📄 **{template['name']}** (ID: `{template['id']}`)")
-                print(f"   • Detection Method: {template['detection_method']}")
-                print(f"   • Template Property: {template['properties'].get('template_property', 'Not found')}")
-                print(f"   • VM Type: {template['properties'].get('vm_type', 'Not found')}")
-                print(f"   • Folder: {template['properties'].get('folder', 'Not found')}")
-                print(f"   • Name Patterns: {template['properties'].get('name_patterns', 'None')}")
-                
-                # Show if it's marked as a VM
                 vm_info = template['vm_info']
+                print(f"📄 **{vm_info.name}** (ID: `{template['id']}`)")
+                print(f"   • Template Property: {template['properties'].get('template_property', 'Not found')}")
                 print(f"   • Power State: {getattr(vm_info, 'power_state', 'Unknown')}")
                 print(f"   • Guest OS: {getattr(vm_info, 'guest_OS', getattr(vm_info, 'guest_os', 'Unknown'))}")
                 
@@ -183,13 +151,11 @@ def analyze_template_vm_relationship():
             
             print(f"📊 **Sample Regular VM: {sample_vm['name']}**")
             print(f"   • Template Property: {sample_vm['properties'].get('template_property', 'Not found')}")
-            print(f"   • VM Type: {sample_vm['properties'].get('vm_type', 'Not found')}")
             print(f"   • Power State: {getattr(sample_vm['vm_info'], 'power_state', 'Unknown')}")
             print()
             
             print(f"📄 **Sample Template: {sample_template['name']}**")
             print(f"   • Template Property: {sample_template['properties'].get('template_property', 'Not found')}")
-            print(f"   • VM Type: {sample_template['properties'].get('vm_type', 'Not found')}")
             print(f"   • Power State: {getattr(sample_template['vm_info'], 'power_state', 'Unknown')}")
             print()
             
@@ -204,15 +170,6 @@ def analyze_template_vm_relationship():
                 print(f"   ✅ Template Property: Regular VM = {vm_template_prop}, Template = {template_template_prop}")
             else:
                 print(f"   ⚠️ Template Property: Both are {vm_template_prop}")
-            
-            # Check VM type difference
-            vm_type = sample_vm['properties'].get('vm_type', None)
-            template_type = sample_template['properties'].get('vm_type', None)
-            
-            if vm_type != template_type:
-                print(f"   ✅ VM Type: Regular VM = {vm_type}, Template = {template_type}")
-            else:
-                print(f"   ⚠️ VM Type: Both are {vm_type}")
             
             # Check if templates have VM-like properties
             print(f"\n🔍 **Template VM-like Properties:**")
@@ -251,12 +208,14 @@ def analyze_template_vm_relationship():
             print("• They are distinguished by the 'template' property being True")
             print("• They can have power states, guest OS, hardware configs, etc.")
             print("• They are essentially 'frozen' VMs that can be cloned/deployed")
+            print("• This matches the official VMware documentation")
         else:
             print("💡 **No templates found - this is normal if no templates exist yet**")
-            print("To create templates:")
-            print("1. Right-click on a VM in vCenter")
-            print("2. Select 'Template' > 'Convert to Template'")
-            print("3. The VM will then appear as a template with template=True")
+            print("To create templates (following VMware instructions):")
+            print("1. Power off a virtual machine")
+            print("2. Right-click the VM in vSphere client")
+            print("3. Select 'Template' → 'Convert to Template'")
+            print("4. The VM will then appear as a template with template=True")
         
         print("\n" + "=" * 60)
         print("🔍 Analysis complete!")
