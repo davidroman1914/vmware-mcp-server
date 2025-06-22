@@ -239,7 +239,23 @@ class VMwareMCPServer:
         params = request.get("params", {})
         request_id = request.get("id")
 
-        if method == "tools/list":
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {}
+                    },
+                    "serverInfo": {
+                        "name": "vmware-vcenter-mcp-server",
+                        "version": "0.1.0"
+                    }
+                }
+            }
+        
+        elif method == "tools/list":
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
