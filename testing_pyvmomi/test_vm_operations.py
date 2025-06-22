@@ -529,6 +529,73 @@ def test_vm_clone_with_customization_simulation():
         except:
             pass
 
+def power_on_and_wait_for_customization(vm, timeout_minutes=10):
+    """Power on VM and wait for customization to complete."""
+    print(f"\n🚀 POWERING ON VM AND WAITING FOR CUSTOMIZATION")
+    print("=" * 50)
+    
+    try:
+        # Power on the VM
+        print(f"🔌 Powering on VM: {vm.name}")
+        task = vm.PowerOn()
+        
+        # Wait for power on to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            time.sleep(2)
+        
+        if task.info.state == vim.TaskInfo.State.error:
+            print(f"❌ Failed to power on VM: {task.info.error.msg}")
+            return False
+        
+        print(f"✅ VM powered on successfully")
+        
+        # Wait for VMware Tools to start and customization to complete
+        print(f"⏳ Waiting for VMware Tools and customization...")
+        start_time = time.time()
+        timeout_seconds = timeout_minutes * 60
+        
+        while time.time() - start_time < timeout_seconds:
+            try:
+                # Refresh VM info
+                vm.RefreshRuntimeInfo()
+                
+                # Check tools status
+                tools_status = vm.guest.toolsStatus if hasattr(vm, 'guest') else 'Unknown'
+                print(f"   • Tools Status: {tools_status}")
+                
+                # Check if customization is complete
+                if hasattr(vm, 'config') and vm.config and hasattr(vm.config, 'extraConfig'):
+                    for config in vm.config.extraConfig:
+                        if config.key == 'guestinfo.customization':
+                            print(f"   • Customization Status: {config.value}")
+                            if 'SUCCESS' in config.value.upper():
+                                print(f"✅ Customization completed successfully!")
+                                return True
+                            elif 'FAILED' in config.value.upper():
+                                print(f"❌ Customization failed!")
+                                return False
+                
+                # Check if we can get guest info (indicates tools are working)
+                if hasattr(vm, 'guest') and vm.guest and hasattr(vm.guest, 'ipAddress'):
+                    ip_addresses = vm.guest.ipAddress
+                    if ip_addresses:
+                        print(f"   • IP Addresses: {', '.join(ip_addresses)}")
+                        print(f"✅ VM is responding with IP addresses!")
+                        return True
+                
+                time.sleep(10)
+                
+            except Exception as e:
+                print(f"   • Error checking status: {str(e)}")
+                time.sleep(10)
+        
+        print(f"⚠️ Timeout waiting for customization (after {timeout_minutes} minutes)")
+        return False
+        
+    except Exception as e:
+        print(f"❌ Error powering on VM: {str(e)}")
+        return False
+
 def create_vm_from_template_with_customization(source_vm, resources, customization_params=None):
     """Actually create a VM by cloning from template with full customization."""
     print(f"\n🚀 CREATING VM FROM TEMPLATE WITH CUSTOMIZATION")
@@ -588,7 +655,7 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
         clone_spec.location.datastore = resources['datastore']
         clone_spec.location.pool = resources['resource_pool']
         clone_spec.location.folder = resources['folder']
-        clone_spec.powerOn = False
+        clone_spec.powerOn = False  # Keep powered off initially
         clone_spec.template = False
         
         # Add hardware customization if specified
@@ -707,6 +774,49 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
             # Get the new VM object
             new_vm = task.info.result
             print(f"   • VM ID: {new_vm._moId}")
+            
+            # Check customization status
+            print(f"\n🔍 Checking VM customization status...")
+            try:
+                if hasattr(new_vm, 'config') and new_vm.config:
+                    print(f"   • Guest ID: {new_vm.config.guestId}")
+                    print(f"   • Tools Status: {new_vm.guest.toolsStatus if hasattr(new_vm, 'guest') else 'Unknown'}")
+                    print(f"   • Power State: {new_vm.runtime.powerState}")
+                    
+                    # Check if customization was applied
+                    if hasattr(new_vm, 'config') and new_vm.config and hasattr(new_vm.config, 'extraConfig'):
+                        customization_applied = False
+                        for config in new_vm.config.extraConfig:
+                            if config.key == 'guestinfo.customization':
+                                customization_applied = True
+                                print(f"   • Customization Applied: {config.value}")
+                                break
+                        
+                        if not customization_applied:
+                            print(f"   • Customization Applied: Not detected")
+                    
+                    print(f"\n💡 Next steps:")
+                    print(f"   1. Power on the VM: {new_vm.name}")
+                    print(f"   2. Wait for VMware Tools to start")
+                    print(f"   3. The customization should apply automatically")
+                    print(f"   4. Check the VM's IP address after boot")
+                    
+            except Exception as e:
+                print(f"   • Error checking customization status: {str(e)}")
+            
+            # Ask if user wants to power on the VM
+            print(f"\n🚀 Would you like to power on the VM and wait for customization?")
+            print(f"   • This will power on the VM and wait for customization to complete")
+            print(f"   • The VM will get the IP address: {customization_params.get('ip_address', 'DHCP')}")
+            
+            # For now, let's power it on automatically
+            if customization_params and any(k in customization_params for k in ['hostname', 'ip_address']):
+                print(f"\n🚀 Powering on VM automatically to apply customization...")
+                success = power_on_and_wait_for_customization(new_vm)
+                if success:
+                    print(f"🎉 VM is ready with customization applied!")
+                else:
+                    print(f"⚠️ VM powered on but customization may not have completed")
             
             return new_vm
         else:
