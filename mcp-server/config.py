@@ -5,41 +5,41 @@ Handles environment variables and settings
 """
 
 import os
-from typing import Optional
+from typing import Optional, List
 
 class Config:
     """Configuration class for VMware vCenter settings."""
     
     @staticmethod
     def get_vcenter_host() -> Optional[str]:
-        """Get vCenter host from environment variables."""
-        return os.getenv("VCENTER_SERVER") or os.getenv("VCENTER_HOST")
+        """Get vCenter host from environment."""
+        return os.getenv("VCENTER_SERVER")
     
     @staticmethod
     def get_vcenter_user() -> Optional[str]:
-        """Get vCenter username from environment variables."""
-        return os.getenv("VCENTER_USERNAME") or os.getenv("VCENTER_USER")
+        """Get vCenter user from environment."""
+        return os.getenv("VCENTER_USERNAME")
     
     @staticmethod
     def get_vcenter_password() -> Optional[str]:
-        """Get vCenter password from environment variables."""
+        """Get vCenter password from environment."""
         return os.getenv("VCENTER_PASSWORD")
     
     @staticmethod
     def get_vcenter_insecure() -> bool:
-        """Get vCenter insecure flag from environment variables."""
+        """Get vCenter insecure flag from environment."""
         return os.getenv("VCENTER_INSECURE", "false").lower() == "true"
     
     @staticmethod
-    def validate_config() -> list[str]:
+    def validate_config() -> List[str]:
         """Validate configuration and return list of missing variables."""
         missing = []
         
         if not Config.get_vcenter_host():
-            missing.append("VCENTER_SERVER/VCENTER_HOST")
+            missing.append("VCENTER_SERVER")
         
         if not Config.get_vcenter_user():
-            missing.append("VCENTER_USERNAME/VCENTER_USER")
+            missing.append("VCENTER_USERNAME")
         
         if not Config.get_vcenter_password():
             missing.append("VCENTER_PASSWORD")
