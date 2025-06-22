@@ -19,8 +19,8 @@ COPY pyproject.toml uv.lock* ./
 # Install Python dependencies using uv
 RUN uv sync --frozen
 
-# Copy the application code
-COPY server.py .
+# Copy all Python modules and files
+COPY *.py ./
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
