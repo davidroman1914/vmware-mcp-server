@@ -169,8 +169,15 @@ def deploy_vm_from_template(
         
         # Deploy the VM
         logger.info(f"Deploying VM '{vm_name}' from template '{resolved_template_id}'")
+        
+        # Use VmtxLibraryItem directly for deployment
+        from com.vmware.vcenter.vm_template_client import LibraryItems as VmtxLibraryItem
+        
+        # Create VmtxLibraryItem instance with client's stub config
+        vmtx_service = VmtxLibraryItem(client.stub_config)
+        
         vm_id, error = safe_api_call(
-            lambda: client.vcenter.vm_template.LibraryItems.deploy(resolved_template_id, deploy_spec),
+            lambda: vmtx_service.deploy(resolved_template_id, deploy_spec),
             f"Failed to deploy VM '{vm_name}' from template"
         )
         

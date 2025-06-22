@@ -121,7 +121,7 @@ def safe_api_call(func, error_msg):
 
 def resolve_template_id(client, template_identifier: str) -> tuple[Optional[str], Optional[str]]:
     """
-    Resolve template identifier (name or ID) to template ID.
+    Resolve template identifier (name or ID) to template ID using Content Library API.
     
     Args:
         client: vSphere client
@@ -131,19 +131,40 @@ def resolve_template_id(client, template_identifier: str) -> tuple[Optional[str]
         tuple: (template_id, error_message) - template_id is None if error
     """
     try:
+        from com.vmware.content.library_client import Item
+        
         # First, try to use the identifier directly as a template ID
         try:
             # Try to get template info using the identifier as ID
-            template_info = client.vcenter.vm_template.LibraryItems.get(template_identifier)
-            return template_identifier, None  # Success - it was already an ID
+            template_info = client.content.library.Item.get(template_identifier)
+            if hasattr(template_info, 'type') and template_info.type == 'com.vmware.content.library.item.VMTemplate':
+                return template_identifier, None  # Success - it was already an ID
         except Exception as e:
             # If that fails, the identifier might be a name
             logger.debug(f"Identifier '{template_identifier}' is not a valid template ID: {str(e)}")
         
-        # Since we can't easily list templates, we'll provide a helpful error
+        # Try to find by name using FindSpec (the correct VMware approach)
+        try:
+            find_spec = Item.FindSpec(name=template_identifier)
+            item_ids = client.content.library.Item.find(find_spec)
+            
+            if item_ids:
+                # Check if the found item is a VM template
+                for item_id in item_ids:
+                    try:
+                        item_info = client.content.library.Item.get(item_id)
+                        if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
+                            return item_id, None  # Found by name
+                    except Exception as e:
+                        logger.debug(f"Error checking item {item_id}: {str(e)}")
+                        continue
+        except Exception as e:
+            logger.debug(f"Error searching for template by name: {str(e)}")
+        
+        # Since we can't find the template, provide a helpful error
         error_msg = f"❌ Template '{template_identifier}' not found. "
-        error_msg += "Please provide the exact template ID (e.g., 'template-123') or ensure the template name is correct. "
-        error_msg += "Note: Template IDs can be found in vCenter or by checking the template's properties."
+        error_msg += "Please provide the exact template ID or name. "
+        error_msg += "Use 'list-templates' to see available templates."
         
         return None, error_msg
         
@@ -153,7 +174,7 @@ def resolve_template_id(client, template_identifier: str) -> tuple[Optional[str]
 
 def list_templates(client) -> tuple[list, Optional[str]]:
     """
-    List available templates by checking VM properties.
+    List available templates using the Content Library API.
     
     Args:
         client: vSphere client
@@ -162,22 +183,27 @@ def list_templates(client) -> tuple[list, Optional[str]]:
         tuple: (templates_list, error_message) - templates_list is empty if error
     """
     try:
-        # Get all VMs
-        vms = client.vcenter.VM.list()
+        # Use the Content Library API to list items
+        from com.vmware.content.library_client import Item
+        
+        # Get all content library items
+        items = client.content.library.Item.list()
         templates = []
         
-        for vm in vms:
+        for item in items:
             try:
-                # Try to get template info for this VM
-                template_info = client.vcenter.vm_template.LibraryItems.get(vm.vm)
-                if template_info:
+                # Get item details to check if it's a VM template
+                item_info = client.content.library.Item.get(item)
+                
+                # Check if this item is a VM template (has VM template metadata)
+                if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
                     templates.append({
-                        'id': vm.vm,
-                        'name': vm.name,
-                        'description': getattr(template_info, 'description', 'No description')
+                        'id': item,
+                        'name': item_info.name,
+                        'description': getattr(item_info, 'description', 'No description')
                     })
-            except Exception:
-                # This VM is not a template, skip it
+            except Exception as e:
+                logger.debug(f"Error getting item info for {item}: {str(e)}")
                 continue
         
         return templates, None
