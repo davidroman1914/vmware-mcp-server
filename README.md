@@ -443,7 +443,7 @@ Here's how to interact with the VMware MCP server to perform common operations:
     "content": [
       {
         "type": "text",
-        "text": "📋 Found 2 VM template(s):\n\n📄 **Ubuntu-Template** (ID: `vm-2001`)\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 2\n   • Memory: 4096 MB\n   • Version: vmx-19\n\n📄 **CentOS-Template** (ID: `vm-2002`)\n   • Guest OS: CentOS Linux (64-bit)\n   • CPU Count: 4\n   • Memory: 8192 MB\n   • Version: vmx-19"
+        "text": "📋 Found 2 VM template(s):\n\n📄 **Ubuntu-Template** (ID: `vm-2001`)\n   • Detection: template property\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 2\n   • Memory: 4096 MB\n   • Version: vmx-19\n   • Folder: /Templates\n\n📄 **CentOS-Template** (ID: `vm-2002`)\n   • Detection: template property\n   • Guest OS: CentOS Linux (64-bit)\n   • CPU Count: 4\n   • Memory: 8192 MB\n   • Version: vmx-19\n   • Folder: /Templates\n"
       }
     ]
   }
@@ -679,3 +679,101 @@ Common permission requirements:
 - **Datastore Access** - Read/write access to target datastores
 
 This clean, modular implementation provides a solid foundation for VMware management through MCP! 🚀 
+
+## VM Template Management
+
+The server supports listing and deploying VMs from templates. VM templates are regular VMs in vCenter that have been converted to templates (they have a `template` property set to `True`).
+
+### List Templates
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "list_templates",
+    "arguments": {}
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "📋 Found 2 VM template(s):\n\n📄 **Ubuntu-Template** (ID: `vm-123`)\n   • Detection: template property\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 2\n   • Memory: 4096 MB\n   • Version: vmx-19\n   • Folder: /Templates\n\n📄 **Windows-Template** (ID: `vm-456`)\n   • Detection: template property\n   • Guest OS: Microsoft Windows Server 2019 (64-bit)\n   • CPU Count: 4\n   • Memory: 8192 MB\n   • Version: vmx-19\n   • Folder: /Templates\n"
+      }
+    ]
+  }
+}
+```
+
+### Deploy VM from Template
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "deploy_from_template",
+    "arguments": {
+      "template_id": "vm-123",
+      "vm_name": "new-ubuntu-vm",
+      "datacenter": "DC1",
+      "datastore": "datastore1",
+      "cluster": "Cluster1",
+      "cpu_count": 4,
+      "memory_mb": 8192
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "✅ Successfully deployed VM 'new-ubuntu-vm' from template 'Ubuntu-Template'\n\n📋 VM Details:\n   • VM ID: vm-789\n   • Name: new-ubuntu-vm\n   • Power State: POWERED_OFF\n   • Guest OS: Ubuntu Linux (64-bit)\n   • CPU Count: 4\n   • Memory: 8192 MB\n   • Datacenter: DC1\n   • Datastore: datastore1\n   • Cluster: Cluster1\n\n💡 The VM is ready for customization and power on."
+      }
+    ]
+  }
+}
+```
+
+### Creating Templates
+
+To create VM templates in vCenter:
+
+1. **Using vCenter UI:**
+   - Right-click on an existing VM
+   - Select "Template" > "Convert to Template"
+   - The VM will then appear in the template list
+
+2. **Using the MCP Server:**
+   - First create a VM using `create_vm` or `clone_vm`
+   - Then convert it to a template using vCenter UI
+   - The template will then be available for deployment
+
+### Template Detection
+
+The server uses multiple methods to detect templates:
+
+1. **Primary Method:** Check if VM has `template` property set to `True`
+2. **Fallback Methods:**
+   - Check VM type property
+   - Check for template-related keywords in VM name
+   - Check for template-related keywords in folder location
+
+💡 **Note:** VM templates are regular VMs in the vCenter inventory with a specific property that distinguishes them from regular VMs. This is the standard VMware approach as documented in the [pyvmomi community samples](https://github.com/vmware/pyvmomi-community-samples/issues/209). 

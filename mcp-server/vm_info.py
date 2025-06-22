@@ -166,115 +166,73 @@ def list_templates_text():
     try:
         client = get_vsphere_client()
         
-        # First, try to get templates from Content Library (the correct way)
+        # Get all VMs and filter for templates (the correct approach)
+        vms = client.vcenter.VM.list()
         templates = []
         
-        try:
-            # Get all content libraries
-            libraries = client.content.Library.list()
-            
-            for library in libraries:
-                try:
-                    # Get items in this library
-                    items = client.content.library.Item.list(library.library)
-                    
-                    for item in items:
-                        try:
-                            # Check if this item is a VM template
-                            if hasattr(item, 'type') and item.type == 'vm-template':
-                                # Get detailed template info
-                                template_info = client.vcenter.vm_template.library_items.get(item.item)
-                                
-                                # Create a template object with the info we need
-                                class TemplateInfo:
-                                    def __init__(self, item_id, name, template_info):
-                                        self.vm = item_id
-                                        self.name = name
-                                        self.template_info = template_info
-                                        self.detection_method = "Content Library"
-                                
-                                template = TemplateInfo(item.item, item.name, template_info)
-                                templates.append(template)
-                                
-                        except Exception as e:
-                            # Skip items that aren't VM templates or have errors
-                            continue
-                            
-                except Exception as e:
-                    # Skip libraries that have errors
-                    continue
-                    
-        except Exception as e:
-            # If Content Library API fails, fall back to old method
-            pass
+        # Debug: Let's see what properties are available
+        debug_info = []
         
-        # If no templates found in Content Library, try the old detection methods
-        if not templates:
-            # Get all VMs and filter for templates (fallback method)
-            vms = client.vcenter.VM.list()
+        # Template detection patterns
+        template_patterns = ['template', 'tpl', 'gold', 'master', 'base']
+        
+        for vm in vms:
+            vm_info = client.vcenter.VM.get(vm.vm)
             
-            # Debug: Let's see what properties are available
-            debug_info = []
+            # Multiple ways to detect templates:
+            is_template = False
+            detection_method = None
             
-            # Template detection patterns
-            template_patterns = ['template', 'tpl', 'gold', 'master', 'base']
+            # Method 1: Check if VM is marked as a template (primary method)
+            # Based on pyvmomi community samples, templates have a specific property
+            if hasattr(vm_info, 'template') and vm_info.template:
+                is_template = True
+                detection_method = "template property"
+                debug_info.append(f"Template detected via 'template' property: {vm_info.name}")
             
-            for vm in vms:
-                vm_info = client.vcenter.VM.get(vm.vm)
-                
-                # Multiple ways to detect templates:
-                is_template = False
-                detection_method = None
-                
-                # Method 1: Check template property
-                if hasattr(vm_info, 'template') and vm_info.template:
-                    is_template = True
-                    detection_method = "template property"
-                    debug_info.append(f"Template detected via 'template' property: {vm_info.name}")
-                
-                # Method 2: Check VM type
-                elif hasattr(vm_info, 'type') and vm_info.type == 'template':
-                    is_template = True
-                    detection_method = "VM type"
-                    debug_info.append(f"Template detected via type: {vm_info.name}")
-                
-                # Method 3: Check if VM name contains template patterns
-                elif any(pattern in vm_info.name.lower() for pattern in template_patterns):
-                    is_template = True
-                    detection_method = "name pattern"
-                    debug_info.append(f"Template detected via name pattern: {vm_info.name}")
-                
-                # Method 4: Check if VM is in a template folder
-                elif hasattr(vm_info, 'folder') and vm_info.folder and any(pattern in vm_info.folder.lower() for pattern in template_patterns):
-                    is_template = True
-                    detection_method = "folder location"
-                    debug_info.append(f"Template detected via folder: {vm_info.name}")
-                
-                # Method 5: Check for VMs in template-related folders (additional check)
-                if not is_template and hasattr(vm_info, 'folder') and vm_info.folder:
-                    try:
-                        # Check if the folder name contains template-related keywords
-                        folder_name_lower = vm_info.folder.lower()
-                        if any(pattern in folder_name_lower for pattern in template_patterns):
-                            is_template = True
-                            detection_method = "folder name pattern"
-                            debug_info.append(f"Template detected via folder name pattern: {vm_info.name} (folder: {vm_info.folder})")
-                    except:
-                        pass
-                
-                if is_template:
-                    # Add detection method to the template info
-                    vm_info.detection_method = detection_method
-                    templates.append(vm_info)
+            # Method 2: Check VM type
+            elif hasattr(vm_info, 'type') and vm_info.type == 'template':
+                is_template = True
+                detection_method = "VM type"
+                debug_info.append(f"Template detected via type: {vm_info.name}")
+            
+            # Method 3: Check if VM name contains template patterns
+            elif any(pattern in vm_info.name.lower() for pattern in template_patterns):
+                is_template = True
+                detection_method = "name pattern"
+                debug_info.append(f"Template detected via name pattern: {vm_info.name}")
+            
+            # Method 4: Check if VM is in a template folder
+            elif hasattr(vm_info, 'folder') and vm_info.folder and any(pattern in vm_info.folder.lower() for pattern in template_patterns):
+                is_template = True
+                detection_method = "folder location"
+                debug_info.append(f"Template detected via folder: {vm_info.name}")
+            
+            # Method 5: Check for VMs in template-related folders (additional check)
+            if not is_template and hasattr(vm_info, 'folder') and vm_info.folder:
+                try:
+                    # Check if the folder name contains template-related keywords
+                    folder_name_lower = vm_info.folder.lower()
+                    if any(pattern in folder_name_lower for pattern in template_patterns):
+                        is_template = True
+                        detection_method = "folder name pattern"
+                        debug_info.append(f"Template detected via folder name pattern: {vm_info.name} (folder: {vm_info.folder})")
+                except:
+                    pass
+            
+            if is_template:
+                # Add detection method to the template info
+                vm_info.detection_method = detection_method
+                templates.append(vm_info)
         
         # If no templates found, show debug info to help understand what's available
         if not templates:
             debug_result = "ℹ️ No VM templates found in vCenter.\n\n"
-            debug_result += "🔍 Note: VM templates are typically stored in Content Libraries, not as regular VMs.\n"
+            debug_result += "🔍 Note: VM templates are regular VMs with a 'template' property set to True.\n"
             debug_result += "💡 To create templates:\n"
-            debug_result += "   1. Create a Content Library in vCenter\n"
-            debug_result += "   2. Convert a VM to a template and publish it to the library\n"
-            debug_result += "   3. Or use the vCenter UI to create templates\n\n"
+            debug_result += "   1. Right-click on a VM in vCenter and select 'Template' > 'Convert to Template'\n"
+            debug_result += "   2. Or use the vCenter UI to create templates from existing VMs\n"
+            debug_result += "   3. Templates will then appear in this list\n\n"
             
             if debug_info:
                 debug_result += "🔍 Debug information (fallback detection):\n"
@@ -308,30 +266,21 @@ def list_templates_text():
             if hasattr(template, 'detection_method'):
                 result += f"   • Detection: {template.detection_method}\n"
             
-            # For Content Library templates, show template info
-            if hasattr(template, 'template_info'):
-                template_info = template.template_info
-                result += f"   • Guest OS: {template_info.guest_os}\n"
-                result += f"   • CPU Count: {template_info.cpu.count}\n"
-                result += f"   • Memory: {template_info.memory.size_mib} MB\n"
-                result += f"   • VM Template: {template_info.vm_template}\n"
-            else:
-                # For regular VM templates (fallback)
-                # Safely get guest OS info
-                guest_os = getattr(template, 'guest_OS', None) or getattr(template, 'guest_os', None) or 'Unknown'
-                result += f"   • Guest OS: {guest_os}\n"
-                
-                # Safely get CPU count from nested cpu object
-                cpu_count = 'Unknown'
-                if hasattr(template, 'cpu') and template.cpu:
-                    cpu_count = getattr(template.cpu, 'count', 'Unknown')
-                result += f"   • CPU Count: {cpu_count}\n"
-                
-                # Safely get memory size from nested memory object
-                memory_mb = 'Unknown'
-                if hasattr(template, 'memory') and template.memory:
-                    memory_mb = getattr(template.memory, 'size_MiB', 'Unknown')
-                result += f"   • Memory: {memory_mb} MB\n"
+            # Safely get guest OS info
+            guest_os = getattr(template, 'guest_OS', None) or getattr(template, 'guest_os', None) or 'Unknown'
+            result += f"   • Guest OS: {guest_os}\n"
+            
+            # Safely get CPU count from nested cpu object
+            cpu_count = 'Unknown'
+            if hasattr(template, 'cpu') and template.cpu:
+                cpu_count = getattr(template.cpu, 'count', 'Unknown')
+            result += f"   • CPU Count: {cpu_count}\n"
+            
+            # Safely get memory size from nested memory object
+            memory_mb = 'Unknown'
+            if hasattr(template, 'memory') and template.memory:
+                memory_mb = getattr(template.memory, 'size_MiB', 'Unknown')
+            result += f"   • Memory: {memory_mb} MB\n"
             
             # Add hardware info if available
             if hasattr(template, 'hardware'):
