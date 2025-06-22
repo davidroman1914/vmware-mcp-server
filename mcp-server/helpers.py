@@ -174,7 +174,7 @@ def resolve_template_id(client, template_identifier: str) -> tuple[Optional[str]
 
 def list_templates(client) -> tuple[list, Optional[str]]:
     """
-    List available templates using the VM Template API.
+    List available templates using the Content Library API.
     
     Args:
         client: vSphere client
@@ -183,20 +183,39 @@ def list_templates(client) -> tuple[list, Optional[str]]:
         tuple: (templates_list, error_message) - templates_list is empty if error
     """
     try:
-        # Use the VM Template API to list templates
+        from com.vmware.content.library_client import Item
+        
         templates = []
         
-        # Get all VM templates using the template service
-        template_service = client.vcenter.vm_template.LibraryItems
-        template_list = template_service.list()
+        # Create Item service instance with client's stub config (correct pattern from samples)
+        item_service = Item(client.stub_config)
         
-        for template in template_list:
-            templates.append({
-                'id': template.library_item,
-                'name': template.name,
-                'description': getattr(template, 'description', 'No description'),
-                'library_id': template.library
-            })
+        # Get all content libraries first
+        from com.vmware.content_client import Library
+        library_service = Library(client.stub_config)
+        libraries = library_service.list()
+        
+        for library_id in libraries:
+            try:
+                # List items in this library
+                items = item_service.list(library_id=library_id)
+                
+                for item_id in items:
+                    try:
+                        item_info = item_service.get(item_id)
+                        if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
+                            templates.append({
+                                'id': item_id,
+                                'name': item_info.name,
+                                'description': getattr(item_info, 'description', 'No description'),
+                                'library_id': library_id
+                            })
+                    except Exception as e:
+                        logger.debug(f"Error getting item info for {item_id}: {str(e)}")
+                        continue
+            except Exception as e:
+                logger.debug(f"Error listing items in library {library_id}: {str(e)}")
+                continue
         
         return templates, None
         
@@ -206,7 +225,7 @@ def list_templates(client) -> tuple[list, Optional[str]]:
 
 def inspect_templates(client) -> tuple[list, Optional[str]]:
     """
-    Inspect all VM templates with detailed information using VM Template API.
+    Inspect all VM templates with detailed information using Content Library API.
     
     Args:
         client: vSphere client
@@ -215,42 +234,55 @@ def inspect_templates(client) -> tuple[list, Optional[str]]:
         tuple: (templates_info, error_message) - templates_info is empty if error
     """
     try:
+        from com.vmware.content.library_client import Item
+        from com.vmware.content_client import Library
+        
         templates_info = []
         
-        # Get all VM templates using the template service
-        template_service = client.vcenter.vm_template.LibraryItems
-        template_list = template_service.list()
+        # Create services with client's stub config (correct pattern from samples)
+        item_service = Item(client.stub_config)
+        library_service = Library(client.stub_config)
         
-        for template in template_list:
-            template_detail = {
-                'id': template.library_item,
-                'name': template.name,
-                'description': getattr(template, 'description', 'No description'),
-                'library_id': template.library,
-                'library_name': 'VM Template Library',  # Default name
-                'creation_time': getattr(template, 'creation_time', 'Unknown'),
-                'last_modified_time': getattr(template, 'last_modified_time', 'Unknown'),
-                'version': getattr(template, 'version', 'Unknown'),
-                'cached': getattr(template, 'cached', False),
-                'metadata': {},
-                'files': []
-            }
-            
-            # Try to get additional template info
+        # Get all content libraries
+        libraries = library_service.list()
+        
+        for library_id in libraries:
             try:
-                template_info = template_service.get(template.library_item)
-                if template_info:
-                    template_detail.update({
-                        'description': getattr(template_info, 'description', template_detail['description']),
-                        'creation_time': getattr(template_info, 'creation_time', template_detail['creation_time']),
-                        'last_modified_time': getattr(template_info, 'last_modified_time', template_detail['last_modified_time']),
-                        'version': getattr(template_info, 'version', template_detail['version']),
-                        'cached': getattr(template_info, 'cached', template_detail['cached'])
-                    })
+                # Get library info
+                library_info = library_service.get(library_id)
+                
+                # List items in this library
+                items = item_service.list(library_id=library_id)
+                
+                for item_id in items:
+                    try:
+                        item_info = item_service.get(item_id)
+                        
+                        # Check if this item is a VM template
+                        if hasattr(item_info, 'type') and item_info.type == 'com.vmware.content.library.item.VMTemplate':
+                            template_detail = {
+                                'id': item_id,
+                                'name': item_info.name,
+                                'description': getattr(item_info, 'description', 'No description'),
+                                'library_id': library_id,
+                                'library_name': library_info.name,
+                                'creation_time': getattr(item_info, 'creation_time', 'Unknown'),
+                                'last_modified_time': getattr(item_info, 'last_modified_time', 'Unknown'),
+                                'version': getattr(item_info, 'version', 'Unknown'),
+                                'cached': getattr(item_info, 'cached', False),
+                                'metadata': {},
+                                'files': []
+                            }
+                            
+                            templates_info.append(template_detail)
+                            
+                    except Exception as e:
+                        logger.debug(f"Error inspecting item {item_id}: {str(e)}")
+                        continue
+                        
             except Exception as e:
-                logger.debug(f"Could not get detailed info for template {template.library_item}: {str(e)}")
-            
-            templates_info.append(template_detail)
+                logger.debug(f"Error inspecting library {library_id}: {str(e)}")
+                continue
         
         return templates_info, None
         
