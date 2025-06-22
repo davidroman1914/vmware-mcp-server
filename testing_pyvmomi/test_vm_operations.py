@@ -556,9 +556,6 @@ def power_on_and_wait_for_customization(vm, timeout_minutes=10):
         
         while time.time() - start_time < timeout_seconds:
             try:
-                # Refresh VM info
-                vm.RefreshRuntimeInfo()
-                
                 # Check tools status
                 tools_status = vm.guest.toolsStatus if hasattr(vm, 'guest') else 'Unknown'
                 print(f"   • Tools Status: {tools_status}")
@@ -580,8 +577,26 @@ def power_on_and_wait_for_customization(vm, timeout_minutes=10):
                     ip_addresses = vm.guest.ipAddress
                     if ip_addresses:
                         print(f"   • IP Addresses: {', '.join(ip_addresses)}")
+                        
+                        # Check if the expected IP is in the list
+                        if hasattr(vm, 'config') and vm.config and hasattr(vm.config, 'extraConfig'):
+                            for config in vm.config.extraConfig:
+                                if config.key == 'guestinfo.customization':
+                                    print(f"   • Customization Status: {config.value}")
+                        
                         print(f"✅ VM is responding with IP addresses!")
                         return True
+                
+                # Also check network adapters
+                if hasattr(vm, 'config') and vm.config and hasattr(vm.config, 'hardware'):
+                    for device in vm.config.hardware.device:
+                        if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                            print(f"   • Network Adapter: {device.deviceInfo.label}")
+                            if hasattr(device, 'backing') and device.backing:
+                                if hasattr(device.backing, 'network'):
+                                    print(f"   • Connected to: {device.backing.network.name}")
+                                elif hasattr(device.backing, 'port'):
+                                    print(f"   • Connected to: {device.backing.port.portgroupKey}")
                 
                 time.sleep(10)
                 
@@ -659,7 +674,7 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
         clone_spec.template = False
         
         # Add hardware customization if specified
-        if customization_params and ('cpu_count' in customization_params or 'memory_mb' in customization_params):
+        if customization_params and ('cpu_count' in customization_params or 'memory_mb' in customization_params or 'disk_size_gb' in customization_params):
             clone_spec.config = vim.vm.ConfigSpec()
             
             if 'cpu_count' in customization_params:
@@ -669,6 +684,29 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
             if 'memory_mb' in customization_params:
                 clone_spec.config.memoryMB = customization_params['memory_mb']
                 print(f"🔧 Setting memory to {customization_params['memory_mb']} MB")
+            
+            # Add disk customization if specified
+            if 'disk_size_gb' in customization_params:
+                # Get the first disk and resize it
+                if hasattr(source_vm, 'config') and source_vm.config and hasattr(source_vm.config, 'hardware'):
+                    for device in source_vm.config.hardware.device:
+                        if isinstance(device, vim.vm.device.VirtualDisk):
+                            # Create a device change spec for the disk
+                            disk_spec = vim.vm.device.VirtualDeviceSpec()
+                            disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                            disk_spec.device = device
+                            
+                            # Set the new size in KB (convert GB to KB)
+                            new_size_kb = customization_params['disk_size_gb'] * 1024 * 1024
+                            disk_spec.device.capacityInKB = new_size_kb
+                            
+                            print(f"🔧 Setting disk size to {customization_params['disk_size_gb']} GB ({new_size_kb} KB)")
+                            
+                            # Add the device change to the config spec
+                            if not hasattr(clone_spec.config, 'deviceChange'):
+                                clone_spec.config.deviceChange = []
+                            clone_spec.config.deviceChange.append(disk_spec)
+                            break
         
         # Add guest customization if network parameters are specified
         if customization_params and any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']):
@@ -709,8 +747,10 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                     
                     # Use DHCP but with specific IP configuration
                     if 'ip_address' in customization_params:
-                        nic_setting.adapter.ip = vim.vm.customization.FixedIp(ipAddress=customization_params['ip_address'])
-                        print(f"🔧 Setting IP address to {customization_params['ip_address']} (via DHCP)")
+                        # Try using DhcpIpGenerator with specific IP
+                        nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                        print(f"🔧 Using DHCP for IP assignment")
+                        print(f"   • Note: IP {customization_params['ip_address']} will be requested from DHCP")
                     else:
                         # Use DHCP if no IP specified
                         nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
@@ -730,6 +770,7 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                         print(f"🔧 Setting DNS servers to 8.8.8.8, 8.8.4.4")
                     
                     clone_spec.customization.nicSettingMap.append(nic_setting)
+                    print(f"🔧 Network adapter configured for: {network_obj.name}")
                 else:
                     print(f"⚠️ No network found, using DHCP for all adapters")
                     # Create a DHCP adapter mapping if no specific network found
@@ -782,6 +823,43 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                     print(f"   • Guest ID: {new_vm.config.guestId}")
                     print(f"   • Tools Status: {new_vm.guest.toolsStatus if hasattr(new_vm, 'guest') else 'Unknown'}")
                     print(f"   • Power State: {new_vm.runtime.powerState}")
+                    
+                    # Check hardware configuration
+                    if hasattr(new_vm.config, 'hardware'):
+                        print(f"\n🔧 HARDWARE CONFIGURATION:")
+                        print(f"   • CPU Count: {new_vm.config.hardware.numCPU} cores")
+                        print(f"   • Memory: {new_vm.config.hardware.memoryMB} MB")
+                        
+                        # Check disk configuration
+                        for device in new_vm.config.hardware.device:
+                            if isinstance(device, vim.vm.device.VirtualDisk):
+                                disk_size_gb = device.capacityInKB / (1024 * 1024)
+                                print(f"   • Disk Size: {disk_size_gb:.1f} GB")
+                                break
+                        
+                        # Compare with requested configuration
+                        if customization_params:
+                            print(f"\n📋 REQUESTED vs ACTUAL CONFIGURATION:")
+                            if 'cpu_count' in customization_params:
+                                requested_cpu = customization_params['cpu_count']
+                                actual_cpu = new_vm.config.hardware.numCPU
+                                status = "✅" if requested_cpu == actual_cpu else "❌"
+                                print(f"   • CPU: {status} Requested {requested_cpu}, Got {actual_cpu}")
+                            
+                            if 'memory_mb' in customization_params:
+                                requested_memory = customization_params['memory_mb']
+                                actual_memory = new_vm.config.hardware.memoryMB
+                                status = "✅" if requested_memory == actual_memory else "❌"
+                                print(f"   • Memory: {status} Requested {requested_memory} MB, Got {actual_memory} MB")
+                            
+                            if 'disk_size_gb' in customization_params:
+                                requested_disk = customization_params['disk_size_gb']
+                                for device in new_vm.config.hardware.device:
+                                    if isinstance(device, vim.vm.device.VirtualDisk):
+                                        actual_disk = device.capacityInKB / (1024 * 1024)
+                                        status = "✅" if abs(requested_disk - actual_disk) < 0.1 else "❌"
+                                        print(f"   • Disk: {status} Requested {requested_disk} GB, Got {actual_disk:.1f} GB")
+                                        break
                     
                     # Check if customization was applied
                     if hasattr(new_vm, 'config') and new_vm.config and hasattr(new_vm.config, 'extraConfig'):
