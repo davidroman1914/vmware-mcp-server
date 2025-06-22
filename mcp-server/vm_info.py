@@ -320,6 +320,126 @@ def list_templates_text():
         except Exception as e:
             result += f"⚠️ Could not check folders: {str(e)}\n\n"
         
+        # ===== SECTION 2.5: Datastore-based Template Detection =====
+        result += "## 💾 Datastore-based Template Detection\n"
+        result += "Looking for templates stored in specific datastores.\n\n"
+        
+        try:
+            # Get all datastores
+            datastores = client.vcenter.Datastore.list()
+            datastore_templates = []
+            
+            for datastore in datastores:
+                try:
+                    datastore_info = client.vcenter.Datastore.get(datastore.datastore)
+                    result += f"💾 **Checking Datastore: {datastore_info.name}**\n"
+                    
+                    # Look for VMs in this datastore
+                    try:
+                        # Try to get VMs associated with this datastore
+                        # This might require a different approach since VMs are typically listed by folder, not datastore
+                        
+                        # Alternative: Check if there are any VMs that have this datastore as their primary storage
+                        # We'll need to check each VM's datastore property
+                        for vm in vms:
+                            try:
+                                vm_info = client.vcenter.VM.get(vm.vm)
+                                
+                                # Check if this VM is stored on this datastore
+                                # This might require checking the VM's storage configuration
+                                if hasattr(vm_info, 'datastore') and vm_info.datastore == datastore.datastore:
+                                    # Check if this VM is a template
+                                    if hasattr(vm_info, 'template') and vm_info.template:
+                                        datastore_templates.append({
+                                            'name': vm_info.name,
+                                            'id': vm.vm,
+                                            'datastore': datastore_info.name,
+                                            'vm_info': vm_info
+                                        })
+                                        result += f"   ✅ **TEMPLATE FOUND**: {vm_info.name} (ID: {vm.vm})\n"
+                                        result += f"      • Template Property: {vm_info.template}\n"
+                                        result += f"      • Power State: {getattr(vm_info, 'power_state', 'Unknown')}\n"
+                                        
+                                        # Safely get guest OS info
+                                        guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
+                                        result += f"      • Guest OS: {guest_os}\n"
+                                        
+                                        # Safely get CPU count from nested cpu object
+                                        cpu_count = 'Unknown'
+                                        if hasattr(vm_info, 'cpu') and vm_info.cpu:
+                                            cpu_count = getattr(vm_info.cpu, 'count', 'Unknown')
+                                        result += f"      • CPU Count: {cpu_count}\n"
+                                        
+                                        # Safely get memory size from nested memory object
+                                        memory_mb = 'Unknown'
+                                        if hasattr(vm_info, 'memory') and vm_info.memory:
+                                            memory_mb = getattr(vm_info.memory, 'size_MiB', 'Unknown')
+                                        result += f"      • Memory: {memory_mb} MB\n"
+                                        
+                                        result += "\n"
+                                        
+                            except Exception as e:
+                                continue
+                                
+                    except Exception as e:
+                        result += f"   ❌ Error checking VMs in datastore: {str(e)}\n"
+                    
+                    # Also check if this datastore name matches the one you mentioned
+                    if 'ova-inf-vh03-ds-1' in datastore_info.name.lower():
+                        result += f"   🎯 **TARGET DATASTORE DETECTED**: {datastore_info.name}\n"
+                        result += f"      • This matches the datastore where you found your template!\n"
+                        result += f"      • Checking for templates in this specific datastore...\n\n"
+                        
+                        # Try to get VMs specifically from this datastore
+                        try:
+                            # This might require a different API call to get VMs by datastore
+                            # For now, let's check all VMs and see which ones are on this datastore
+                            for vm in vms:
+                                try:
+                                    vm_info = client.vcenter.VM.get(vm.vm)
+                                    
+                                    # Check if this VM is on the target datastore
+                                    # We might need to check the VM's storage configuration differently
+                                    if hasattr(vm_info, 'datastore') and vm_info.datastore == datastore.datastore:
+                                        result += f"      📄 VM on target datastore: {vm_info.name}\n"
+                                        result += f"         • Template Property: {getattr(vm_info, 'template', 'Not found')}\n"
+                                        result += f"         • VM Type: {getattr(vm_info, 'type', 'Not found')}\n"
+                                        result += f"         • Power State: {getattr(vm_info, 'power_state', 'Unknown')}\n"
+                                        
+                                        # If this VM is a template, add it to our list
+                                        if hasattr(vm_info, 'template') and vm_info.template:
+                                            datastore_templates.append({
+                                                'name': vm_info.name,
+                                                'id': vm.vm,
+                                                'datastore': datastore_info.name,
+                                                'vm_info': vm_info
+                                            })
+                                            
+                                except Exception as e:
+                                    continue
+                                    
+                        except Exception as e:
+                            result += f"      ❌ Error checking VMs in target datastore: {str(e)}\n"
+                        
+                        result += "\n"
+                        
+                except Exception as e:
+                    result += f"   ❌ Error analyzing datastore: {str(e)}\n"
+            
+            if datastore_templates:
+                result += f"✅ Found {len(datastore_templates)} template(s) in datastores:\n\n"
+                for template in datastore_templates:
+                    result += f"💾 **{template['name']}** (Datastore: {template['datastore']})\n"
+                    result += f"   • VM ID: {template['id']}\n"
+                    result += f"   • Template Property: {template['vm_info'].template}\n"
+                    result += f"   • Power State: {getattr(template['vm_info'], 'power_state', 'Unknown')}\n"
+                    result += "\n"
+            else:
+                result += "ℹ️ No templates found in datastores.\n\n"
+                
+        except Exception as e:
+            result += f"⚠️ Could not check datastores: {str(e)}\n\n"
+        
         # ===== SECTION 3: Content Library Templates =====
         result += "## 📚 Content Library Templates\n"
         result += "These are advanced templates stored in Content Libraries.\n\n"
