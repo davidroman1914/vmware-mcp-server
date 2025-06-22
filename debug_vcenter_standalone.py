@@ -1,48 +1,91 @@
 #!/usr/bin/env python3
 """
-Comprehensive debug script to analyze vCenter environment and understand template detection issues.
-This script will provide detailed information about what's actually in your vCenter.
+STANDALONE vCenter Environment Analysis Script
+==============================================
+
+This script can be run on any machine with access to your vCenter environment.
+It will provide comprehensive analysis of your vCenter to help debug template detection issues.
+
+SETUP INSTRUCTIONS:
+1. Install Python 3.8+ on the target machine
+2. Install required packages: pip install vmware-vcenter requests urllib3
+3. Update the credentials below with your actual vCenter details
+4. Run: python debug_vcenter_standalone.py
+
+CREDENTIALS - UPDATE THESE WITH YOUR ACTUAL VALUES:
 """
 
 import os
 import sys
-from vmware.vapi.vsphere.client import create_vsphere_client
+import requests
+import urllib3
+
+# ===== UPDATE THESE CREDENTIALS WITH YOUR ACTUAL VALUES =====
+VCENTER_HOST = "your_vcenter_hostname_or_ip"  # e.g., "192.168.1.100" or "vcenter.company.com"
+VCENTER_USER = "your_username"                 # e.g., "administrator@vsphere.local"
+VCENTER_PASSWORD = "your_password"             # Your actual password
+VCENTER_INSECURE = True                        # Set to True if using self-signed certificates
+# =============================================================
+
+def check_dependencies():
+    """Check if required packages are installed."""
+    try:
+        from vmware.vapi.vsphere.client import create_vsphere_client
+        print("✅ vmware-vcenter package is available")
+    except ImportError:
+        print("❌ vmware-vcenter package not found!")
+        print("   Install it with: pip install vmware-vcenter")
+        sys.exit(1)
+    
+    try:
+        import requests
+        print("✅ requests package is available")
+    except ImportError:
+        print("❌ requests package not found!")
+        print("   Install it with: pip install requests")
+        sys.exit(1)
 
 def get_vsphere_client():
     """Get vSphere client with proper authentication."""
-    # Get credentials from environment
-    vcenter_host = os.getenv('VCENTER_HOST')
-    vcenter_user = os.getenv('VCENTER_USER')
-    vcenter_password = os.getenv('VCENTER_PASSWORD')
-    vcenter_insecure = os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
+    from vmware.vapi.vsphere.client import create_vsphere_client
     
-    if not all([vcenter_host, vcenter_user, vcenter_password]):
-        print("❌ Error: Missing vCenter credentials in environment variables")
-        print("   Please set: VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD")
+    if VCENTER_HOST == "your_vcenter_hostname_or_ip":
+        print("❌ Error: Please update the credentials in this script!")
+        print("   Edit the VCENTER_HOST, VCENTER_USER, and VCENTER_PASSWORD variables")
+        print("   at the top of this script with your actual vCenter details.")
         sys.exit(1)
     
-    # Create session with SSL handling
-    import requests
-    import urllib3
+    print(f"🔍 Connecting to vCenter: {VCENTER_HOST}")
+    print(f"🔍 Username: {VCENTER_USER}")
+    print(f"🔍 Insecure SSL: {VCENTER_INSECURE}")
     
+    # Create session with SSL handling
     session = requests.Session()
-    session.verify = not vcenter_insecure
+    session.verify = not VCENTER_INSECURE
     
     # Disable SSL warnings for demo (not recommended in production)
-    if vcenter_insecure:
+    if VCENTER_INSECURE:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     
     # Create vSphere client
     return create_vsphere_client(
-        server=vcenter_host, 
-        username=vcenter_user, 
-        password=vcenter_password, 
+        server=VCENTER_HOST, 
+        username=VCENTER_USER, 
+        password=VCENTER_PASSWORD, 
         session=session
     )
 
 def main():
     print("🔍 **COMPREHENSIVE VCENTER ENVIRONMENT ANALYSIS**")
     print("=" * 60)
+    print("This script will analyze your vCenter environment to help debug")
+    print("template detection issues with the VMware MCP server.")
+    print()
+    
+    # Check dependencies
+    print("## 📦 CHECKING DEPENDENCIES")
+    check_dependencies()
+    print()
     
     try:
         client = get_vsphere_client()
@@ -343,8 +386,30 @@ def main():
         print("   4. Try creating a new template from a VM")
         print("   5. Check user permissions in vCenter")
         
+        # ===== COPY-PASTE READY COMMANDS =====
+        print("\n## 📋 COPY-PASTE READY COMMANDS")
+        print("=" * 60)
+        print("Use these commands to install dependencies on the target machine:")
+        print()
+        print("pip install vmware-vcenter requests urllib3")
+        print()
+        print("Or if you prefer pip3:")
+        print("pip3 install vmware-vcenter requests urllib3")
+        print()
+        print("Then run this script with:")
+        print("python debug_vcenter_standalone.py")
+        print()
+        print("Or:")
+        print("python3 debug_vcenter_standalone.py")
+        
     except Exception as e:
         print(f"❌ Error: {str(e)}")
+        print("\n💡 **Troubleshooting:**")
+        print("   1. Check your vCenter credentials are correct")
+        print("   2. Verify the vCenter hostname/IP is reachable")
+        print("   3. Check if you need to set VCENTER_INSECURE=True for self-signed certs")
+        print("   4. Try pinging the vCenter hostname/IP")
+        print("   5. Check your network connectivity to the vCenter")
         sys.exit(1)
 
 if __name__ == "__main__":

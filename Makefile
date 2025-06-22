@@ -108,4 +108,16 @@ docker-shell: ## Start a shell in the Docker container for manual testing
 
 .PHONY: clean-files
 clean-files: ## Clean up generated files
-	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache 
+	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache
+
+# Debug targets
+debug-templates: build
+	@echo "🔍 Running vCenter environment analysis in Docker..."
+	docker run --rm \
+		--env-file .env \
+		vmware-mcp-server:latest \
+		python debug_templates.py
+
+debug-templates-local:
+	@echo "🔍 Running vCenter environment analysis locally..."
+	cd mcp-server && python debug_templates.py 
