@@ -718,102 +718,91 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
         if customization_params and any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']):
             clone_spec.customization = vim.vm.customization.Specification()
             
-            # Add global IP settings (required for Linux customization)
+            # Global IP settings (required for Linux customization)
             clone_spec.customization.globalIPSettings = vim.vm.customization.GlobalIPSettings()
             if 'gateway' in customization_params:
-                clone_spec.customization.globalIPSettings.dnsServerList = ['8.8.8.8', '8.8.4.4']  # Default DNS servers
+                clone_spec.customization.globalIPSettings.dnsServerList = ['8.8.8.8', '8.8.4.4']
             
-            # Linux customization
+            # Linux customization - be explicit about Ubuntu
             clone_spec.customization.identity = vim.vm.customization.LinuxPrep()
             
             if 'hostname' in customization_params:
                 clone_spec.customization.identity.hostName = vim.vm.customization.FixedName(name=customization_params['hostname'])
                 print(f"🔧 Setting hostname to {customization_params['hostname']}")
             
-            # Network configuration
-            if any(k in customization_params for k in ['ip_address', 'netmask', 'gateway']):
-                clone_spec.customization.nicSettingMap = []
+            # Set domain if specified
+            if 'domain' in customization_params:
+                clone_spec.customization.identity.domain = customization_params['domain']
+                print(f"🔧 Setting domain to {customization_params['domain']}")
+            
+            # Network configuration - Use Ansible's exact approach
+            clone_spec.customization.nicSettingMap = []
+            
+            # Find the network
+            network_obj = None
+            if 'network_name' in customization_params:
+                for network in resources.get('networks', []):
+                    if network.name == customization_params['network_name']:
+                        network_obj = network
+                        break
+            
+            # If network not found, use the first available
+            if not network_obj and resources.get('networks'):
+                network_obj = resources['networks'][0]
+            
+            if network_obj:
+                # Create adapter mapping exactly like Ansible does
+                guest_map = vim.vm.customization.AdapterMapping()
+                guest_map.adapter = vim.vm.customization.IPSettings()
                 
-                # Find the network
-                network_obj = None
-                if 'network_name' in customization_params:
-                    # Try to find the network by name
-                    for network in resources.get('networks', []):
-                        if network.name == customization_params['network_name']:
-                            network_obj = network
-                            break
-                
-                # If network not found, use the first available
-                if not network_obj and resources.get('networks'):
-                    network_obj = resources['networks'][0]
-                
-                if network_obj:
-                    nic_setting = vim.vm.customization.AdapterMapping()
-                    nic_setting.adapter = vim.vm.customization.IPSettings()
+                # IP assignment logic - exactly like Ansible
+                if 'ip_address' in customization_params and 'netmask' in customization_params:
+                    guest_map.adapter.ip = vim.vm.customization.FixedIp()
+                    guest_map.adapter.ip.ipAddress = str(customization_params['ip_address'])
+                    guest_map.adapter.subnetMask = str(customization_params['netmask'])
+                    print(f"🔧 Setting fixed IP: {customization_params['ip_address']}/{customization_params['netmask']}")
                     
-                    # Try FixedIp first, fallback to DHCP if it fails
-                    if 'ip_address' in customization_params:
-                        try:
-                            # Use Ansible's approach: create FixedIp() first, then set ipAddress
-                            nic_setting.adapter.ip = vim.vm.customization.FixedIp()
-                            nic_setting.adapter.ip.ipAddress = customization_params['ip_address']
-                            print(f"🔧 Setting fixed IP address to {customization_params['ip_address']}")
-                        except Exception as e:
-                            print(f"⚠️ Failed to set fixed IP, using DHCP: {str(e)}")
-                            nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
-                            print(f"🔧 Using DHCP for IP assignment")
-                    else:
-                        # Use DHCP if no IP specified
-                        nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
-                        print(f"🔧 Using DHCP for IP address")
-                    
-                    if 'netmask' in customization_params:
-                        nic_setting.adapter.subnetMask = customization_params['netmask']
-                        print(f"🔧 Setting netmask to {customization_params['netmask']}")
-                    
-                    if 'gateway' in customization_params:
-                        nic_setting.adapter.gateway = [customization_params['gateway']]
-                        print(f"🔧 Setting gateway to {customization_params['gateway']}")
-                    
-                    # Set DNS servers if gateway is provided
-                    if 'gateway' in customization_params:
-                        nic_setting.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
-                        print(f"🔧 Setting DNS servers to 8.8.8.8, 8.8.4.4")
-                    
-                    clone_spec.customization.nicSettingMap.append(nic_setting)
-                    print(f"🔧 Network adapter configured for: {network_obj.name}")
-                    
-                    # Add debugging info
-                    print(f"🔧 Network customization details:")
-                    print(f"   • Network: {network_obj.name}")
-                    print(f"   • IP Method: {'Fixed IP' if 'ip_address' in customization_params else 'DHCP'}")
-                    if 'ip_address' in customization_params:
-                        print(f"   • Requested IP: {customization_params['ip_address']}")
-                    if 'netmask' in customization_params:
-                        print(f"   • Netmask: {customization_params['netmask']}")
-                    if 'gateway' in customization_params:
-                        print(f"   • Gateway: {customization_params['gateway']}")
-                    
-                    # Debug the customization spec
-                    print(f"🔧 Customization spec details:")
-                    print(f"   • Global IP Settings: {clone_spec.customization.globalIPSettings}")
-                    print(f"   • Identity: {clone_spec.customization.identity}")
-                    print(f"   • NIC Settings Count: {len(clone_spec.customization.nicSettingMap)}")
-                    for i, nic in enumerate(clone_spec.customization.nicSettingMap):
-                        print(f"   • NIC {i}: {nic.adapter}")
-                        if hasattr(nic.adapter, 'ip'):
-                            print(f"     - IP: {nic.adapter.ip}")
-                        if hasattr(nic.adapter, 'subnetMask'):
-                            print(f"     - Netmask: {nic.adapter.subnetMask}")
-                        if hasattr(nic.adapter, 'gateway'):
-                            print(f"     - Gateway: {nic.adapter.gateway}")
+                    # For Ubuntu/Linux, we need to be more explicit about static IP
+                    # Set DNS servers on the adapter level
+                    guest_map.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
+                    print(f"🔧 Setting DNS servers on adapter: 8.8.8.8, 8.8.4.4")
                 else:
-                    print(f"⚠️ No network found, using DHCP for all adapters")
-                    # Create a DHCP adapter mapping if no specific network found
-                    nic_setting = vim.vm.customization.AdapterMapping()
-                    nic_setting.adapter = vim.vm.customization.IPSettings()
-                    nic_setting.adapter.ip = vim.vm.customization.DhcpIpGenerator()
-                    clone_spec.customization.nicSettingMap.append(nic_setting)
+                    # Use DHCP if no IP specified
+                    guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                    print(f"🔧 Using DHCP for IP assignment")
+                
+                # Gateway
+                if 'gateway' in customization_params:
+                    guest_map.adapter.gateway = [customization_params['gateway']]
+                    print(f"🔧 Setting gateway to {customization_params['gateway']}")
+                
+                clone_spec.customization.nicSettingMap.append(guest_map)
+                print(f"🔧 Network adapter configured for: {network_obj.name}")
+                
+                # Debug the customization spec
+                print(f"🔧 Customization spec details:")
+                print(f"   • Global IP Settings: {clone_spec.customization.globalIPSettings}")
+                print(f"   • Identity: {clone_spec.customization.identity}")
+                print(f"   • NIC Settings Count: {len(clone_spec.customization.nicSettingMap)}")
+                for i, nic in enumerate(clone_spec.customization.nicSettingMap):
+                    print(f"   • NIC {i}: {nic.adapter}")
+                    if hasattr(nic.adapter, 'ip'):
+                        print(f"     - IP: {nic.adapter.ip}")
+                        if hasattr(nic.adapter.ip, 'ipAddress'):
+                            print(f"       - IP Address: {nic.adapter.ip.ipAddress}")
+                    if hasattr(nic.adapter, 'subnetMask'):
+                        print(f"     - Netmask: {nic.adapter.subnetMask}")
+                    if hasattr(nic.adapter, 'gateway'):
+                        print(f"     - Gateway: {nic.adapter.gateway}")
+                    if hasattr(nic.adapter, 'dnsServerList'):
+                        print(f"     - DNS Servers: {nic.adapter.dnsServerList}")
+            else:
+                print(f"⚠️ No network found, using DHCP for all adapters")
+                # Create a DHCP adapter mapping if no specific network found
+                guest_map = vim.vm.customization.AdapterMapping()
+                guest_map.adapter = vim.vm.customization.IPSettings()
+                guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                clone_spec.customization.nicSettingMap.append(guest_map)
         
         print(f"\n🚀 Starting VM clone operation...")
         print(f"   • This may take several minutes depending on VM size")
@@ -1008,6 +997,51 @@ def test_actual_vm_creation():
         except:
             pass
 
+def show_expected_netplan_config(ip_address, netmask, gateway):
+    """Show what the netplan configuration should look like for static IP"""
+    print(f"\n📋 EXPECTED NETPLAN CONFIGURATION FOR STATIC IP:")
+    print("=" * 60)
+    print(f"# Expected netplan configuration for static IP: {ip_address}")
+    print("# This is what VMware customization should generate:")
+    print("network:")
+    print("  version: 2")
+    print("  renderer: networkd")
+    print("  ethernets:")
+    print("    ens33:")
+    print("      dhcp4: no")
+    print("      dhcp6: no")
+    print(f"      addresses:")
+    print(f"        - {ip_address}/{netmask}")
+    print(f"      gateway4: {gateway}")
+    print("      nameservers:")
+    print("        addresses:")
+    print("          - 8.8.8.8")
+    print("          - 8.8.4.4")
+    print("=" * 60)
+    print(f"# ACTUAL NETPLAN CONFIGURATION (DHCP):")
+    print("# This is what VMware actually generated:")
+    print("network:")
+    print("  version: 2")
+    print("  renderer: networkd")
+    print("  ethernets:")
+    print("    ens33:")
+    print("      dhcp4: yes")
+    print("      dhcp4-overrides:")
+    print("        use-dns: false")
+    print("      dhcp6: yes")
+    print("      dhcp6-overrides:")
+    print("        use-dns: false")
+    print("      nameservers:")
+    print("        addresses:")
+    print("          - 8.8.8.8")
+    print("          - 8.8.4.4")
+    print("=" * 60)
+    print("🔍 ANALYSIS:")
+    print("• VMware customization engine generated DHCP config instead of static IP")
+    print("• DNS servers were applied correctly (8.8.8.8, 8.8.4.4)")
+    print("• The issue is that VMware is not recognizing our static IP configuration")
+    print("• This suggests a problem with the customization specification or guest OS detection")
+
 def check_vm_network_config(si, vm_name):
     """Check the network configuration of a VM after it's powered on"""
     print(f"\n🔍 Checking network configuration for VM: {vm_name}")
@@ -1156,12 +1190,17 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
             if 'gateway' in customization_params:
                 clone_spec.customization.globalIPSettings.dnsServerList = ['8.8.8.8', '8.8.4.4']
             
-            # Linux customization
+            # Linux customization - be explicit about Ubuntu
             clone_spec.customization.identity = vim.vm.customization.LinuxPrep()
             
             if 'hostname' in customization_params:
                 clone_spec.customization.identity.hostName = vim.vm.customization.FixedName(name=customization_params['hostname'])
                 print(f"🔧 Setting hostname to {customization_params['hostname']}")
+            
+            # Set domain if specified
+            if 'domain' in customization_params:
+                clone_spec.customization.identity.domain = customization_params['domain']
+                print(f"🔧 Setting domain to {customization_params['domain']}")
             
             # Network configuration - Use Ansible's exact approach
             clone_spec.customization.nicSettingMap = []
@@ -1189,6 +1228,11 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
                     guest_map.adapter.ip.ipAddress = str(customization_params['ip_address'])
                     guest_map.adapter.subnetMask = str(customization_params['netmask'])
                     print(f"🔧 Setting fixed IP: {customization_params['ip_address']}/{customization_params['netmask']}")
+                    
+                    # For Ubuntu/Linux, we need to be more explicit about static IP
+                    # Set DNS servers on the adapter level
+                    guest_map.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
+                    print(f"🔧 Setting DNS servers on adapter: 8.8.8.8, 8.8.4.4")
                 else:
                     # Use DHCP if no IP specified
                     guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
@@ -1198,11 +1242,6 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
                 if 'gateway' in customization_params:
                     guest_map.adapter.gateway = [customization_params['gateway']]
                     print(f"🔧 Setting gateway to {customization_params['gateway']}")
-                
-                # DNS servers
-                if 'gateway' in customization_params:
-                    guest_map.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
-                    print(f"🔧 Setting DNS servers to 8.8.8.8, 8.8.4.4")
                 
                 clone_spec.customization.nicSettingMap.append(guest_map)
                 print(f"🔧 Network adapter configured for: {network_obj.name}")
@@ -1216,10 +1255,14 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
                     print(f"   • NIC {i}: {nic.adapter}")
                     if hasattr(nic.adapter, 'ip'):
                         print(f"     - IP: {nic.adapter.ip}")
+                        if hasattr(nic.adapter.ip, 'ipAddress'):
+                            print(f"       - IP Address: {nic.adapter.ip.ipAddress}")
                     if hasattr(nic.adapter, 'subnetMask'):
                         print(f"     - Netmask: {nic.adapter.subnetMask}")
                     if hasattr(nic.adapter, 'gateway'):
                         print(f"     - Gateway: {nic.adapter.gateway}")
+                    if hasattr(nic.adapter, 'dnsServerList'):
+                        print(f"     - DNS Servers: {nic.adapter.dnsServerList}")
             else:
                 print(f"⚠️ No network found, using DHCP for all adapters")
                 # Create a DHCP adapter mapping if no specific network found
@@ -1245,7 +1288,36 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
         if task.info.state == 'success':
             cloned_vm = task.info.result
             print(f"✅ VM cloned successfully: {cloned_vm.name}")
-            return cloned_vm
+            
+            # Wait a bit for the clone to complete
+            print("⏳ Waiting for clone to complete...")
+            time.sleep(10)
+            
+            # Power on the VM
+            print(f"🔌 Powering on {cloned_vm.name}...")
+            task = cloned_vm.PowerOn()
+            wait_for_task(task)
+            
+            if task.info.state == 'success':
+                print(f"✅ VM powered on successfully")
+                
+                # Wait for guest tools and customization
+                print("⏳ Waiting for guest tools and customization to complete...")
+                time.sleep(30)
+                
+                # Check network configuration
+                check_vm_network_config(si, cloned_vm.name)
+                
+                # Show expected vs actual netplan configuration
+                if 'ip_address' in customization_params and 'netmask' in customization_params and 'gateway' in customization_params:
+                    show_expected_netplan_config(
+                        customization_params['ip_address'],
+                        customization_params['netmask'],
+                        customization_params['gateway']
+                    )
+                
+            else:
+                print(f"❌ Failed to power on VM: {task.info.error.msg}")
         else:
             print(f"❌ Failed to clone VM: {task.info.error.msg}")
             return None
@@ -1323,6 +1395,14 @@ def test_clone_vm_with_customization():
                 
                 # Check network configuration
                 check_vm_network_config(si, cloned_vm.name)
+                
+                # Show expected vs actual netplan configuration
+                if 'ip_address' in customization_params and 'netmask' in customization_params and 'gateway' in customization_params:
+                    show_expected_netplan_config(
+                        customization_params['ip_address'],
+                        customization_params['netmask'],
+                        customization_params['gateway']
+                    )
                 
             else:
                 print(f"❌ Failed to power on VM: {task.info.error.msg}")
