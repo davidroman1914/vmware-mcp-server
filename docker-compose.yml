@@ -11,4 +11,16 @@ services:
     stdin_open: true
     tty: true
     volumes:
+      - ./logs:/app/logs
+
+  vmware-vcenter-server:
+    build: ./mcp-server-vmware
+    environment:
+      - VCENTER_HOST=${VCENTER_HOST}
+      - VCENTER_USER=${VCENTER_USER}
+      - VCENTER_PASSWORD=${VCENTER_PASSWORD}
+      - VCENTER_INSECURE=${VCENTER_INSECURE:-false}
+    stdin_open: true
+    tty: true
+    volumes:
       - ./logs:/app/logs 

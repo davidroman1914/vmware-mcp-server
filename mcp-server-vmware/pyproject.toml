@@ -1,0 +1,21 @@
+[project]
+name = "vmware-vcenter-mcp-server"
+version = "0.1.0"
+description = "Clean MCP server using only vmware-vcenter package"
+authors = [
+    {name = "VMware MCP Team"}
+]
+dependencies = [
+    "vmware-vcenter==9.0.0.0",
+    "requests",
+    "urllib3",
+    "mcp",
+]
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [] 

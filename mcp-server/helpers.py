@@ -187,12 +187,29 @@ def list_templates(client) -> tuple[list, Optional[str]]:
         
         templates = []
         
-        # Create Item service instance with client's stub config (correct pattern from samples)
-        item_service = Item(client.stub_config)
+        # Try different ways to access the stub config
+        stub_config = None
+        if hasattr(client, 'stub_config'):
+            stub_config = client.stub_config
+        elif hasattr(client, 'service_manager') and hasattr(client.service_manager, 'stub_config'):
+            stub_config = client.service_manager.stub_config
+        else:
+            # Try to get stub_config from the client's internal structure
+            try:
+                stub_config = client._stub_config
+            except:
+                pass
+        
+        if not stub_config:
+            # Fallback: try to find templates using VM API
+            return _list_templates_fallback(client)
+        
+        # Create Item service instance with stub config
+        item_service = Item(stub_config)
         
         # Get all content libraries first
         from com.vmware.content_client import Library
-        library_service = Library(client.stub_config)
+        library_service = Library(stub_config)
         libraries = library_service.list()
         
         for library_id in libraries:
@@ -221,6 +238,45 @@ def list_templates(client) -> tuple[list, Optional[str]]:
         
     except Exception as e:
         logger.error(f"Error listing templates: {str(e)}")
+        # Fallback: try to find templates using VM API
+        return _list_templates_fallback(client)
+
+def _list_templates_fallback(client) -> tuple[list, Optional[str]]:
+    """
+    Fallback method to list templates using VM API.
+    
+    Args:
+        client: vSphere client
+        
+    Returns:
+        tuple: (templates_list, error_message) - templates_list is empty if error
+    """
+    try:
+        from com.vmware.vcenter_client import VM
+        
+        templates = []
+        
+        # Get all VMs and filter for templates
+        vms = client.vcenter.VM.list()
+        
+        for vm in vms:
+            try:
+                # Check if this VM is a template
+                if hasattr(vm, 'template') and vm.template:
+                    templates.append({
+                        'id': vm.vm,
+                        'name': vm.name,
+                        'description': 'VM Template',
+                        'power_state': vm.power_state
+                    })
+            except Exception as e:
+                logger.debug(f"Error checking VM {vm.vm}: {str(e)}")
+                continue
+        
+        return templates, None
+        
+    except Exception as e:
+        logger.error(f"Error in fallback template listing: {str(e)}")
         return [], f"❌ Error listing templates: {str(e)}"
 
 def inspect_templates(client) -> tuple[list, Optional[str]]:
@@ -239,9 +295,26 @@ def inspect_templates(client) -> tuple[list, Optional[str]]:
         
         templates_info = []
         
-        # Create services with client's stub config (correct pattern from samples)
-        item_service = Item(client.stub_config)
-        library_service = Library(client.stub_config)
+        # Try different ways to access the stub config
+        stub_config = None
+        if hasattr(client, 'stub_config'):
+            stub_config = client.stub_config
+        elif hasattr(client, 'service_manager') and hasattr(client.service_manager, 'stub_config'):
+            stub_config = client.service_manager.stub_config
+        else:
+            # Try to get stub_config from the client's internal structure
+            try:
+                stub_config = client._stub_config
+            except:
+                pass
+        
+        if not stub_config:
+            # Fallback: try to find templates using VM API
+            return _inspect_templates_fallback(client)
+        
+        # Create services with stub config
+        item_service = Item(stub_config)
+        library_service = Library(stub_config)
         
         # Get all content libraries
         libraries = library_service.list()
@@ -288,4 +361,53 @@ def inspect_templates(client) -> tuple[list, Optional[str]]:
         
     except Exception as e:
         logger.error(f"Error inspecting templates: {str(e)}")
+        # Fallback: try to find templates using VM API
+        return _inspect_templates_fallback(client)
+
+def _inspect_templates_fallback(client) -> tuple[list, Optional[str]]:
+    """
+    Fallback method to inspect templates using VM API.
+    
+    Args:
+        client: vSphere client
+        
+    Returns:
+        tuple: (templates_info, error_message) - templates_info is empty if error
+    """
+    try:
+        from com.vmware.vcenter_client import VM
+        
+        templates_info = []
+        
+        # Get all VMs and filter for templates
+        vms = client.vcenter.VM.list()
+        
+        for vm in vms:
+            try:
+                # Check if this VM is a template
+                if hasattr(vm, 'template') and vm.template:
+                    template_detail = {
+                        'id': vm.vm,
+                        'name': vm.name,
+                        'description': 'VM Template',
+                        'power_state': vm.power_state,
+                        'cpu_count': getattr(vm, 'cpu_count', 'Unknown'),
+                        'memory_size_mib': getattr(vm, 'memory_size_mib', 'Unknown'),
+                        'guest_id': getattr(vm, 'guest_id', 'Unknown'),
+                        'version': getattr(vm, 'version', 'Unknown'),
+                        'firmware': getattr(vm, 'firmware', 'Unknown'),
+                        'metadata': {},
+                        'files': []
+                    }
+                    
+                    templates_info.append(template_detail)
+                    
+            except Exception as e:
+                logger.debug(f"Error inspecting VM {vm.vm}: {str(e)}")
+                continue
+        
+        return templates_info, None
+        
+    except Exception as e:
+        logger.error(f"Error in fallback template inspection: {str(e)}")
         return [], f"❌ Error inspecting templates: {str(e)}" 

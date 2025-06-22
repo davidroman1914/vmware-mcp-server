@@ -27,6 +27,19 @@ run-server: ## Run the MCP server directly
 shell: ## Start a Python shell with dependencies
 	uv run python
 
+# Clean vmware-vcenter server targets
+.PHONY: run-vmware-server
+run-vmware-server: ## Run the clean vmware-vcenter MCP server locally
+	cd mcp-server-vmware && python server.py
+
+.PHONY: test-vmware-server
+test-vmware-server: ## Test the clean vmware-vcenter MCP server
+	cd mcp-server-vmware && python test_server.py
+
+.PHONY: install-vmware
+install-vmware: ## Install dependencies for clean vmware-vcenter server
+	cd mcp-server-vmware && pip install -r requirements.txt
+
 # Docker workflow
 .PHONY: setup
 setup: ## Create .env file from template if needed
@@ -41,13 +54,25 @@ setup: ## Create .env file from template if needed
 build: ## Build Docker image
 	docker-compose build
 
+.PHONY: build-vmware
+build-vmware: ## Build only the clean vmware-vcenter Docker image
+	docker-compose build vmware-vcenter-server
+
 .PHONY: run
 run: ## Run the MCP server in Docker
 	docker-compose up
 
+.PHONY: run-vmware
+run-vmware: ## Run the clean vmware-vcenter server in Docker
+	docker-compose up vmware-vcenter-server
+
 .PHONY: run-detached
 run-detached: ## Run the MCP server in Docker (detached)
 	docker-compose up -d
+
+.PHONY: run-vmware-detached
+run-vmware-detached: ## Run the clean vmware-vcenter server in Docker (detached)
+	docker-compose up -d vmware-vcenter-server
 
 .PHONY: stop
 stop: ## Stop Docker containers
@@ -61,5 +86,12 @@ clean: ## Clean up Docker resources
 logs: ## View Docker logs
 	docker-compose logs -f
 
+.PHONY: logs-vmware
+logs-vmware: ## View clean vmware-vcenter server logs
+	docker-compose logs -f vmware-vcenter-server
+
 .PHONY: all
-all: setup build run ## Setup, build, and run Docker workflow 
+all: setup build run ## Setup, build, and run Docker workflow
+
+.PHONY: all-vmware
+all-vmware: setup build-vmware run-vmware ## Setup, build, and run clean vmware-vcenter server 
