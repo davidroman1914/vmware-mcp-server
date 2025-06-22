@@ -94,12 +94,12 @@ async def list_tools() -> list[Tool]:
                     },
                     "disk": {
                         "type": "array",
-                        "description": "Disk specifications",
+                        "description": "Disk specifications (list format) or disk storage overrides (dict format)",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "size_gb": {"type": "integer"},
-                                "datastore": {"type": "string"}
+                                "datastore": {"type": "string", "description": "Target datastore for the disk"},
+                                "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
                             }
                         }
                     },
@@ -165,12 +165,12 @@ async def list_tools() -> list[Tool]:
                     },
                     "disk": {
                         "type": "array",
-                        "description": "Disk specifications",
+                        "description": "Disk specifications (list format) or disk storage overrides (dict format)",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "size_gb": {"type": "integer"},
-                                "datastore": {"type": "string"}
+                                "datastore": {"type": "string", "description": "Target datastore for the disk"},
+                                "storage_policy": {"type": "string", "description": "Storage policy for the disk"}
                             }
                         }
                     },

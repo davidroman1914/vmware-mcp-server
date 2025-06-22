@@ -151,7 +151,7 @@ Deploy vm-456 from template "windows-template" and name it "test-server"
 
 **Deploy with customization:**
 ```
-Deploy a VM from template "template-123" named "production-web". Put it in datacenter "dc-001" and cluster "cluster-001". Give it 4 CPU cores, 8GB RAM, a 100GB disk on datastore "datastore-001", and connect it to "VM Network". Set hostname to "prod-web-01" and IP to "192.168.1.100".
+Deploy a VM from template "template-123" named "production-web". Put it in datacenter "dc-001" and cluster "cluster-001". Give it 4 CPU cores, 8GB RAM, and connect it to "VM Network". Set hostname to "prod-web-01" and IP to "192.168.1.100".
 ```
 
 **Deploy with network configuration:**
@@ -270,7 +270,7 @@ The server handles the complex VMware API interactions behind the scenes, so you
       "memory": {"size_mib": 4096}
     },
     "disk": [
-      {"size_gb": 50, "datastore": "datastore-001"}
+      {"datastore": "datastore-001"}
     ],
     "networks": [
       {"name": "VM Network", "device_type": "VMXNET3"}

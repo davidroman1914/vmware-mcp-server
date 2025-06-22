@@ -87,17 +87,30 @@ def deploy_vm_from_template(
         
         # Set disk customization
         if disk:
-            disk_specs = []
-            for disk_config in disk:
-                disk_spec = client.vcenter.vm_template.LibraryItems.DiskUpdateSpec()
-                if 'size_gb' in disk_config:
-                    disk_spec.capacity = disk_config['size_gb'] * 1024 * 1024 * 1024  # Convert to bytes
-                if 'datastore' in disk_config:
+            # Handle both list format (for backward compatibility) and dict format
+            if isinstance(disk, list):
+                # Convert list format to dict format
+                disk_overrides = {}
+                for i, disk_config in enumerate(disk):
+                    disk_key = f"disk-{i}"
                     disk_storage = client.vcenter.vm_template.LibraryItems.DeploySpecDiskStorage()
-                    disk_storage.datastore = disk_config['datastore']
-                    disk_spec.storage = disk_storage
-                disk_specs.append(disk_spec)
-            deploy_spec.disk_storage = disk_specs
+                    if 'datastore' in disk_config:
+                        disk_storage.datastore = disk_config['datastore']
+                    if 'storage_policy' in disk_config:
+                        disk_storage.storage_policy = disk_config['storage_policy']
+                    disk_overrides[disk_key] = disk_storage
+                deploy_spec.disk_storage_overrides = disk_overrides
+            elif isinstance(disk, dict):
+                # Handle dict format directly
+                disk_overrides = {}
+                for disk_key, disk_config in disk.items():
+                    disk_storage = client.vcenter.vm_template.LibraryItems.DeploySpecDiskStorage()
+                    if 'datastore' in disk_config:
+                        disk_storage.datastore = disk_config['datastore']
+                    if 'storage_policy' in disk_config:
+                        disk_storage.storage_policy = disk_config['storage_policy']
+                    disk_overrides[disk_key] = disk_storage
+                deploy_spec.disk_storage_overrides = disk_overrides
         
         # Set network customization
         if networks:
