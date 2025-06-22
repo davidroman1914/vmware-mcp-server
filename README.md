@@ -56,8 +56,8 @@ vmware-mcp-server/
 Set these environment variables:
 
 ```bash
-export VCENTER_SERVER="your-vcenter-host"
-export VCENTER_USERNAME="your-username"
+export VCENTER_HOST="your-vcenter-host"
+export VCENTER_USER="your-username"
 export VCENTER_PASSWORD="your-password"
 export VCENTER_INSECURE="false"  # Set to "true" for self-signed certificates
 ```

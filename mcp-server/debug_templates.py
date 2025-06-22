@@ -11,14 +11,14 @@ from vmware.vapi.vsphere.client import create_vsphere_client
 def get_vsphere_client():
     """Get vSphere client with proper authentication."""
     # Get credentials from environment
-    vcenter_host = os.getenv('VCENTER_SERVER')
-    vcenter_user = os.getenv('VCENTER_USERNAME')
+    vcenter_host = os.getenv('VCENTER_HOST')
+    vcenter_user = os.getenv('VCENTER_USER')
     vcenter_password = os.getenv('VCENTER_PASSWORD')
     vcenter_insecure = os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
     
     if not all([vcenter_host, vcenter_user, vcenter_password]):
         print("❌ Error: Missing vCenter credentials in environment variables")
-        print("   Please set: VCENTER_SERVER, VCENTER_USERNAME, VCENTER_PASSWORD")
+        print("   Please set: VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD")
         print("   You can copy env.example to .env and update it with your credentials")
         sys.exit(1)
     
@@ -43,12 +43,12 @@ def get_vsphere_client():
 
 def main():
     # Get credentials from environment
-    server = os.getenv('VCENTER_SERVER')
-    username = os.getenv('VCENTER_USERNAME')
+    server = os.getenv('VCENTER_HOST')
+    username = os.getenv('VCENTER_USER')
     password = os.getenv('VCENTER_PASSWORD')
     
     if not all([server, username, password]):
-        print("❌ Missing environment variables: VCENTER_SERVER, VCENTER_USERNAME, VCENTER_PASSWORD")
+        print("❌ Missing environment variables: VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD")
         sys.exit(1)
     
     print(f"🔍 Connecting to vCenter: {server}")

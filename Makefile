@@ -52,8 +52,8 @@ run-detached: ## Run the MCP server in Docker (detached)
 .PHONY: docker-run
 docker-run: ## Run the server directly in Docker (without docker-compose)
 	docker run --rm -it \
-		-e VCENTER_SERVER=$(VCENTER_SERVER) \
-		-e VCENTER_USERNAME=$(VCENTER_USERNAME) \
+		-e VCENTER_HOST=$(VCENTER_HOST) \
+		-e VCENTER_USER=$(VCENTER_USER) \
 		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
 		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
 		vmware-mcp-server-clean
@@ -90,8 +90,8 @@ debug-templates: ## Debug VM template detection (requires real vCenter connectio
 docker-test: ## Build and run Docker container for testing with real vCenter
 	docker build -t vmware-mcp-server-clean .
 	docker run --rm -it \
-		-e VCENTER_SERVER=$(VCENTER_SERVER) \
-		-e VCENTER_USERNAME=$(VCENTER_USERNAME) \
+		-e VCENTER_HOST=$(VCENTER_HOST) \
+		-e VCENTER_USER=$(VCENTER_USER) \
 		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
 		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
 		vmware-mcp-server-clean python debug_templates.py
@@ -100,8 +100,8 @@ docker-test: ## Build and run Docker container for testing with real vCenter
 docker-shell: ## Start a shell in the Docker container for manual testing
 	docker build -t vmware-mcp-server-clean .
 	docker run --rm -it \
-		-e VCENTER_SERVER=$(VCENTER_SERVER) \
-		-e VCENTER_USERNAME=$(VCENTER_USERNAME) \
+		-e VCENTER_HOST=$(VCENTER_HOST) \
+		-e VCENTER_USER=$(VCENTER_USER) \
 		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
 		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
 		vmware-mcp-server-clean /bin/bash

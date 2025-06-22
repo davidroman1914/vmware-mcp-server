@@ -11,13 +11,13 @@ from vmware.vapi.vsphere.client import create_vsphere_client
 
 def get_vsphere_client():
     """Create vSphere client with environment variables."""
-    host = os.getenv("VCENTER_SERVER")
-    user = os.getenv("VCENTER_USERNAME")
+    host = os.getenv("VCENTER_HOST")
+    user = os.getenv("VCENTER_USER")
     pwd = os.getenv("VCENTER_PASSWORD")
     insecure = os.getenv("VCENTER_INSECURE", "false").lower() == "true"
 
     if not all([host, user, pwd]):
-        missing = [k for k, v in [("VCENTER_SERVER", host), ("VCENTER_USERNAME", user), ("VCENTER_PASSWORD", pwd)] if not v]
+        missing = [k for k, v in [("VCENTER_HOST", host), ("VCENTER_USER", user), ("VCENTER_PASSWORD", pwd)] if not v]
         raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
 
     # Create session with SSL handling

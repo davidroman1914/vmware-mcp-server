@@ -4,10 +4,10 @@ services:
   vmware-mcp-server-clean:
     build: .
     environment:
-      - VCENTER_SERVER=${VCENTER_SERVER}
-      - VCENTER_USERNAME=${VCENTER_USERNAME}
+      - VCENTER_HOST=${VCENTER_HOST}
+      - VCENTER_USER=${VCENTER_USER}
       - VCENTER_PASSWORD=${VCENTER_PASSWORD}
-      - VCENTER_INSECURE=${VCENTER_INSECURE:-false}
+      - VCENTER_INSECURE=${VCENTER_INSECURE}
     stdin_open: true
     tty: true
     volumes:

@@ -69,7 +69,7 @@ if __name__ == "__main__":
     
     if missing_vars:
         print(f"❌ Missing environment variables: {', '.join(missing_vars)}")
-        print("Please set VCENTER_SERVER, VCENTER_USERNAME, and VCENTER_PASSWORD")
+        print("Please set VCENTER_HOST, VCENTER_USER, and VCENTER_PASSWORD")
         sys.exit(1)
     
     # Show current config (without sensitive data)

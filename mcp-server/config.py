@@ -13,12 +13,12 @@ class Config:
     @staticmethod
     def get_vcenter_host() -> Optional[str]:
         """Get vCenter host from environment."""
-        return os.getenv("VCENTER_SERVER")
+        return os.getenv("VCENTER_HOST")
     
     @staticmethod
     def get_vcenter_user() -> Optional[str]:
         """Get vCenter user from environment."""
-        return os.getenv("VCENTER_USERNAME")
+        return os.getenv("VCENTER_USER")
     
     @staticmethod
     def get_vcenter_password() -> Optional[str]:
@@ -36,10 +36,10 @@ class Config:
         missing = []
         
         if not Config.get_vcenter_host():
-            missing.append("VCENTER_SERVER")
+            missing.append("VCENTER_HOST")
         
         if not Config.get_vcenter_user():
-            missing.append("VCENTER_USERNAME")
+            missing.append("VCENTER_USER")
         
         if not Config.get_vcenter_password():
             missing.append("VCENTER_PASSWORD")
