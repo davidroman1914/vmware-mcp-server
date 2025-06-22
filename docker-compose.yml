@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   vmware-mcp-server-clean:
-    build: ./mcp-server
+    build: .
     environment:
       - VCENTER_SERVER=${VCENTER_SERVER}
       - VCENTER_USERNAME=${VCENTER_USERNAME}

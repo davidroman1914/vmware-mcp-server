@@ -39,7 +39,7 @@ setup: ## Create .env file from template if needed
 
 .PHONY: build
 build: ## Build Docker image
-	cd mcp-server && make build
+	docker build -t vmware-mcp-server-clean .
 
 .PHONY: run
 run: ## Run the MCP server in Docker
@@ -48,6 +48,15 @@ run: ## Run the MCP server in Docker
 .PHONY: run-detached
 run-detached: ## Run the MCP server in Docker (detached)
 	docker-compose up -d vmware-mcp-server-clean
+
+.PHONY: docker-run
+docker-run: ## Run the server directly in Docker (without docker-compose)
+	docker run --rm -it \
+		-e VCENTER_SERVER=$(VCENTER_SERVER) \
+		-e VCENTER_USERNAME=$(VCENTER_USERNAME) \
+		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
+		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
+		vmware-mcp-server-clean
 
 .PHONY: stop
 stop: ## Stop Docker containers
@@ -71,4 +80,8 @@ lint: ## Run linting (if configured)
 
 .PHONY: format
 format: ## Format code (if configured)
-	cd mcp-server && uv run python -m black . || echo "Formatting not configured" 
+	cd mcp-server && uv run python -m black . || echo "Formatting not configured"
+
+.PHONY: clean-files
+clean-files: ## Clean up generated files
+	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache 

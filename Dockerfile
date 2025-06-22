@@ -13,14 +13,14 @@ RUN apt-get update && apt-get install -y \
 # Install uv for dependency management
 RUN pip install uv
 
-# Copy pyproject.toml and lock file
-COPY pyproject.toml uv.lock* ./
+# Copy pyproject.toml and lock file from mcp-server
+COPY mcp-server/pyproject.toml mcp-server/uv.lock* ./
 
 # Install Python dependencies using uv
 RUN uv sync --frozen
 
-# Copy all Python modules and files
-COPY *.py ./
+# Copy all Python modules and files from mcp-server
+COPY mcp-server/*.py ./
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
