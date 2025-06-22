@@ -1,4 +1,4 @@
-# VMware vSphere VM List Makefile
+# VMware MCP Server Makefile
 
 # Help
 .PHONY: help
@@ -9,36 +9,23 @@ help: ## Show this help message
 # Local development with uv
 .PHONY: setup-uv
 setup-uv: ## Sync dependencies from pyproject.toml (first time or anytime)
-	uv sync
+	cd mcp-server && uv sync
 
 .PHONY: install
 install: ## Sync dependencies from pyproject.toml
-	uv sync
+	cd mcp-server && uv sync
 
 .PHONY: run-local
 run-local: ## Run the MCP server locally using uv
-	uv run python main.py
+	cd mcp-server && uv run python server.py
 
-.PHONY: run-server
-run-server: ## Run the MCP server directly
-	uv run python mcp-server/server.py
+.PHONY: test
+test: ## Test the power management functionality
+	cd mcp-server && uv run python test_power_management.py
 
 .PHONY: shell
 shell: ## Start a Python shell with dependencies
-	uv run python
-
-# Clean vmware-vcenter server targets
-.PHONY: run-vmware-server
-run-vmware-server: ## Run the clean vmware-vcenter MCP server locally
-	cd mcp-server-vmware && uv run python server.py
-
-.PHONY: test-vmware-server
-test-vmware-server: ## Test the clean vmware-vcenter MCP server
-	cd mcp-server-vmware && uv run python test_server.py
-
-.PHONY: install-vmware
-install-vmware: ## Install dependencies for clean vmware-vcenter server
-	cd mcp-server-vmware && uv sync
+	cd mcp-server && uv run python
 
 # Docker workflow
 .PHONY: setup
@@ -52,27 +39,15 @@ setup: ## Create .env file from template if needed
 
 .PHONY: build
 build: ## Build Docker image
-	docker-compose build
-
-.PHONY: build-vmware
-build-vmware: ## Build only the clean vmware-vcenter Docker image
-	docker-compose build vmware-vcenter-server
+	cd mcp-server && make build
 
 .PHONY: run
 run: ## Run the MCP server in Docker
-	docker-compose up
-
-.PHONY: run-vmware
-run-vmware: ## Run the clean vmware-vcenter server in Docker
-	docker-compose up vmware-vcenter-server
+	docker-compose up vmware-mcp-server-clean
 
 .PHONY: run-detached
 run-detached: ## Run the MCP server in Docker (detached)
-	docker-compose up -d
-
-.PHONY: run-vmware-detached
-run-vmware-detached: ## Run the clean vmware-vcenter server in Docker (detached)
-	docker-compose up -d vmware-vcenter-server
+	docker-compose up -d vmware-mcp-server-clean
 
 .PHONY: stop
 stop: ## Stop Docker containers
@@ -84,14 +59,16 @@ clean: ## Clean up Docker resources
 
 .PHONY: logs
 logs: ## View Docker logs
-	docker-compose logs -f
-
-.PHONY: logs-vmware
-logs-vmware: ## View clean vmware-vcenter server logs
-	docker-compose logs -f vmware-vcenter-server
+	docker-compose logs -f vmware-mcp-server-clean
 
 .PHONY: all
 all: setup build run ## Setup, build, and run Docker workflow
 
-.PHONY: all-vmware
-all-vmware: setup build-vmware run-vmware ## Setup, build, and run clean vmware-vcenter server 
+# Development helpers
+.PHONY: lint
+lint: ## Run linting (if configured)
+	cd mcp-server && uv run python -m flake8 . || echo "Linting not configured"
+
+.PHONY: format
+format: ## Format code (if configured)
+	cd mcp-server && uv run python -m black . || echo "Formatting not configured" 

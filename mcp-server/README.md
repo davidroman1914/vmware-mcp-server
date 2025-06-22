@@ -1,4 +1,4 @@
-# VMware MCP Server (Clean Implementation)
+# VMware MCP Server
 
 A clean, modular MCP server for VMware vCenter using the official `vmware-vcenter` Python package.
 
@@ -143,7 +143,7 @@ get-vm-info vm-2010
 
 ### Project Structure
 ```
-mcp-server-vmware/
+mcp-server/
 ├── server.py              # Main MCP server
 ├── vm_operations.py       # VM operations module
 ├── config.py             # Configuration management
