@@ -65,7 +65,10 @@ def list_all_vms_text():
             
             result += f"{power_emoji} **{vm_info.name}** (ID: `{vm.vm}`)\n"
             result += f"   • Power State: {vm_info.power_state}\n"
-            result += f"   • Guest OS: {vm_info.guest_OS or 'Unknown'}\n"
+            
+            # Safely get guest OS info
+            guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
+            result += f"   • Guest OS: {guest_os}\n"
             result += f"   • CPU Count: {vm_info.cpu_count}\n"
             result += f"   • Memory: {vm_info.memory_size_MiB} MB\n"
             
@@ -101,7 +104,10 @@ def get_vm_info_text(vm_id: str):
         result += f"• ID: `{vm_id}`\n"
         result += f"• Name: {vm_info.name}\n"
         result += f"• Power State: {power_emoji} {vm_info.power_state}\n"
-        result += f"• Guest OS: {vm_info.guest_OS or 'Unknown'}\n"
+        
+        # Safely get guest OS info
+        guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
+        result += f"• Guest OS: {guest_os}\n"
         result += f"• CPU Count: {vm_info.cpu_count}\n"
         result += f"• Memory: {vm_info.memory_size_MiB} MB\n"
         
@@ -144,27 +150,81 @@ def list_templates_text():
         vms = client.vcenter.VM.list()
         templates = []
         
+        # Debug: Let's see what properties are available
+        debug_info = []
+        
         for vm in vms:
             vm_info = client.vcenter.VM.get(vm.vm)
-            # Check if VM is a template (has template property)
+            
+            # Multiple ways to detect templates:
+            is_template = False
+            
+            # Method 1: Check template property
             if hasattr(vm_info, 'template') and vm_info.template:
+                is_template = True
+                debug_info.append(f"Template detected via 'template' property: {vm_info.name}")
+            
+            # Method 2: Check if VM name contains 'template' (case insensitive)
+            elif 'template' in vm_info.name.lower():
+                is_template = True
+                debug_info.append(f"Template detected via name pattern: {vm_info.name}")
+            
+            # Method 3: Check if VM is in a template folder (common pattern)
+            elif hasattr(vm_info, 'folder') and vm_info.folder and 'template' in vm_info.folder.lower():
+                is_template = True
+                debug_info.append(f"Template detected via folder: {vm_info.name}")
+            
+            # Method 4: Check VM type or other properties that might indicate template
+            elif hasattr(vm_info, 'type') and vm_info.type == 'template':
+                is_template = True
+                debug_info.append(f"Template detected via type: {vm_info.name}")
+            
+            if is_template:
                 templates.append(vm_info)
         
+        # If no templates found, show debug info to help understand what's available
         if not templates:
-            return "ℹ️ No VM templates found in vCenter."
+            debug_result = "ℹ️ No VM templates found in vCenter.\n\n"
+            if debug_info:
+                debug_result += "🔍 Debug information:\n"
+                for info in debug_info[:5]:  # Show first 5 debug entries
+                    debug_result += f"   • {info}\n"
+                debug_result += "\n"
+            
+            # Show some sample VM properties to help understand the structure
+            if vms:
+                sample_vm = client.vcenter.VM.get(vms[0].vm)
+                debug_result += "🔍 Sample VM properties available:\n"
+                for attr in dir(sample_vm):
+                    if not attr.startswith('_') and not callable(getattr(sample_vm, attr)):
+                        try:
+                            value = getattr(sample_vm, attr)
+                            debug_result += f"   • {attr}: {type(value).__name__}\n"
+                        except:
+                            pass
+                debug_result += "\n💡 Tip: Templates might be identified by different properties depending on your vCenter setup."
+            
+            return debug_result
         
         # Format the output
         result = f"📋 Found {len(templates)} VM template(s):\n\n"
         
         for template in templates:
             result += f"📄 **{template.name}** (ID: `{template.vm}`)\n"
-            result += f"   • Guest OS: {template.guest_OS or 'Unknown'}\n"
+            
+            # Safely get guest OS info
+            guest_os = getattr(template, 'guest_OS', None) or getattr(template, 'guest_os', None) or 'Unknown'
+            result += f"   • Guest OS: {guest_os}\n"
             result += f"   • CPU Count: {template.cpu_count}\n"
             result += f"   • Memory: {template.memory_size_MiB} MB\n"
             
             # Add hardware info if available
             if hasattr(template, 'hardware'):
                 result += f"   • Version: {template.hardware.version}\n"
+            
+            # Add folder info if available
+            if hasattr(template, 'folder'):
+                result += f"   • Folder: {template.folder}\n"
             
             result += "\n"
         

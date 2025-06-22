@@ -82,6 +82,10 @@ lint: ## Run linting (if configured)
 format: ## Format code (if configured)
 	cd mcp-server && uv run python -m black . || echo "Formatting not configured"
 
+.PHONY: debug-templates
+debug-templates: ## Debug VM template detection (requires real vCenter connection)
+	cd mcp-server && uv run python debug_templates.py
+
 .PHONY: clean-files
 clean-files: ## Clean up generated files
 	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache 

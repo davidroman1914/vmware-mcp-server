@@ -633,4 +633,49 @@ All requests are sent as JSON-RPC over stdio. Example requests and expected resp
 - ✅ **Comprehensive Testing** - Test scripts for all operations
 - ✅ **Production Ready** - Error handling and validation
 
+## 🔧 Troubleshooting
+
+### Template Detection Issues
+
+If you're having trouble with template detection (getting "No VM templates found"), the server includes a debug script to help identify the issue:
+
+```bash
+# Run the debug script to analyze VM properties
+make debug-templates
+```
+
+This will:
+- Show all available VM properties
+- Check multiple template detection methods
+- Provide suggestions for improving detection
+- Help understand your vCenter's template organization
+
+**Common Template Detection Methods:**
+1. **Template Property** - VMs marked as templates in vCenter
+2. **Name Pattern** - VMs with "template" in their name
+3. **Folder Location** - VMs in template-specific folders
+4. **VM Type** - VMs with type set to "template"
+
+**If No Templates Are Found:**
+- Verify templates exist in your vCenter
+- Check if templates are in a specific folder
+- Look for naming conventions used in your environment
+- Ensure templates are properly marked as templates in vCenter
+
+### Connection Issues
+
+If you're getting connection errors:
+1. Verify your `.env` file has correct vCenter credentials
+2. Check network connectivity to your vCenter server
+3. Ensure SSL certificate issues are handled (set `VCENTER_INSECURE=true` if needed)
+4. Verify the vCenter user has appropriate permissions
+
+### Permission Issues
+
+Common permission requirements:
+- **VM Management** - Power on/off, restart VMs
+- **VM Creation** - Clone VMs, deploy from templates
+- **Resource Pool Access** - Access to target resource pools
+- **Datastore Access** - Read/write access to target datastores
+
 This clean, modular implementation provides a solid foundation for VMware management through MCP! 🚀 
