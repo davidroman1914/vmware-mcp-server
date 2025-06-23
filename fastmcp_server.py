@@ -60,19 +60,26 @@ def connect_to_vcenter():
 
 @mcp.tool()
 def list_vms() -> str:
-    """List all VMs using pyvmomi."""
+    """List all VMs using pyvmomi - optimized for speed."""
     if not connect_to_vcenter():
         return "Error: Could not connect to vCenter"
     
     try:
         content = service_instance.RetrieveContent()
+        
+        # Use a more targeted container view - only get VMs, not templates
         container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
+            content.rootFolder, [vim.VirtualMachine], False  # False = don't recurse into subfolders
         )
         
         vms = []
         for vm in container.view:
-            if not vm.config.template:  # Skip templates
+            # Skip templates quickly
+            if hasattr(vm, 'config') and vm.config and vm.config.template:
+                continue
+                
+            # Get only essential properties
+            try:
                 memory_mb = vm.config.hardware.memoryMB if vm.config and vm.config.hardware else 0
                 memory_gb = round(memory_mb / 1024, 1) if memory_mb else 0
                 
@@ -80,16 +87,64 @@ def list_vms() -> str:
                     'name': vm.name,
                     'power_state': vm.runtime.powerState,
                     'cpu_count': vm.config.hardware.numCPU if vm.config and vm.config.hardware else 0,
-                    'memory_mb': memory_mb,
-                    'memory_gb': memory_gb,
-                    'guest_id': vm.config.guestId if vm.config else 'N/A'
+                    'memory_gb': memory_gb
                 }
                 vms.append(vm_info)
+            except:
+                # Skip VMs with missing config
+                continue
+        
+        # Clean up the container view
+        container.Destroy()
         
         if vms:
             result = f"Found {len(vms)} VMs:\n"
             for vm in vms:
                 result += f"- {vm['name']} ({vm['power_state']}, {vm['cpu_count']} CPU, {vm['memory_gb']} GB RAM)\n"
+            return result
+        else:
+            return "No VMs found"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def list_vms_fast() -> str:
+    """List all VMs using pyvmomi - ultra fast (no memory calculation)."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        
+        # Use a minimal container view for maximum speed
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], False
+        )
+        
+        vms = []
+        for vm in container.view:
+            # Skip templates quickly
+            if hasattr(vm, 'config') and vm.config and vm.config.template:
+                continue
+                
+            # Get only name and power state for maximum speed
+            try:
+                vm_info = {
+                    'name': vm.name,
+                    'power_state': vm.runtime.powerState
+                }
+                vms.append(vm_info)
+            except:
+                continue
+        
+        # Clean up the container view
+        container.Destroy()
+        
+        if vms:
+            result = f"Found {len(vms)} VMs (fast mode):\n"
+            for vm in vms:
+                result += f"- {vm['name']} ({vm['power_state']})\n"
             return result
         else:
             return "No VMs found"
