@@ -107,7 +107,7 @@ class VMwareMCPServer:
             "jsonrpc": "2.0",
             "id": params.get("id"),
             "result": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2024-11-05",  # Use older protocol version for compatibility
                 "capabilities": {
                     "tools": tools
                 },

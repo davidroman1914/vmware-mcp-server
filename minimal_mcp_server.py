@@ -12,9 +12,19 @@ def handle_initialize(params):
         "jsonrpc": "2.0",
         "id": params.get("id"),
         "result": {
-            "protocolVersion": "2025-03-26",
+            "protocolVersion": "2024-11-05",
             "capabilities": {
-                "tools": []
+                "tools": [
+                    {
+                        "name": "hello",
+                        "description": "A simple hello world tool",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": False
+                        }
+                    }
+                ]
             },
             "serverInfo": {
                 "name": "minimal-mcp-server",
@@ -22,6 +32,33 @@ def handle_initialize(params):
             }
         }
     }
+
+def handle_tools_call(params):
+    """Handle tools/call requests."""
+    tool_name = params.get("name")
+    
+    if tool_name == "hello":
+        return {
+            "jsonrpc": "2.0",
+            "id": params.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hello from minimal MCP server!"
+                    }
+                ]
+            }
+        }
+    else:
+        return {
+            "jsonrpc": "2.0",
+            "id": params.get("id"),
+            "error": {
+                "code": -32601,
+                "message": f"Unknown tool: {tool_name}"
+            }
+        }
 
 def main():
     """Minimal MCP server."""
@@ -41,6 +78,11 @@ def main():
             
             if method == "initialize":
                 response = handle_initialize({"id": request_id})
+                print(f"[DEBUG] Sending: {json.dumps(response)}", file=sys.stderr)
+                print(json.dumps(response))
+                sys.stdout.flush()
+            elif method == "tools/call":
+                response = handle_tools_call({"id": request_id, **params})
                 print(f"[DEBUG] Sending: {json.dumps(response)}", file=sys.stderr)
                 print(json.dumps(response))
                 sys.stdout.flush()
