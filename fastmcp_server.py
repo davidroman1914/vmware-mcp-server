@@ -87,8 +87,8 @@ def get_vcenter_session():
         return None
 
 @mcp.tool()
-def list_vms_rest() -> str:
-    """List VMs using REST API - SUPER FAST."""
+def list_vms() -> str:
+    """List all VMs using REST API - FAST."""
     session = get_vcenter_session()
     if not session:
         return "Error: Failed to connect to vCenter REST API."
@@ -119,72 +119,38 @@ def list_vms_rest() -> str:
         return f"Error listing VMs: {str(e)}"
 
 @mcp.tool()
-def list_vms() -> str:
-    """List all VMs in vCenter - FAST VERSION."""
-    if not connect_to_vcenter():
-        return "Error: Failed to connect to vCenter. Check environment variables."
-    
-    try:
-        content = service_instance.RetrieveContent()
-        
-        # Use a more efficient query - only get VMs, not all properties
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
-        )
-        
-        # Super fast listing - minimal data only
-        vm_count = 0
-        result = "VMs:\n"
-        
-        for vm in container.view:
-            vm_count += 1
-            power_state = str(vm.runtime.powerState).replace('vim.VirtualMachinePowerState.', '')
-            result += f"- {vm.name} ({power_state})\n"
-        
-        container.Destroy()
-        
-        if vm_count == 0:
-            return "No VMs found."
-        
-        return f"Found {vm_count} VMs:\n" + result
-        
-    except Exception as e:
-        return f"Error listing VMs: {str(e)}"
-
-@mcp.tool()
 def list_vms_detailed() -> str:
-    """List all VMs with detailed information (slower)."""
-    if not connect_to_vcenter():
-        return "Error: Failed to connect to vCenter. Check environment variables."
+    """List VMs with details using REST API - FAST."""
+    session = get_vcenter_session()
+    if not session:
+        return "Error: Failed to connect to vCenter REST API."
     
     try:
-        content = service_instance.RetrieveContent()
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
-        )
+        host = os.getenv('VCENTER_HOST')
+        url = f"https://{host}/rest/vcenter/vm"
         
-        # Detailed listing - more data but slower
-        vm_list = []
-        for vm in container.view:
-            vm_info = {
-                "name": vm.name,
-                "power_state": str(vm.runtime.powerState),
-                "cpu_count": vm.config.hardware.numCPU if hasattr(vm.config, 'hardware') and vm.config.hardware else 0,
-                "memory_mb": vm.config.hardware.memoryMB if hasattr(vm.config, 'hardware') and vm.config.hardware else 0,
-            }
-            vm_list.append(vm_info)
+        response = session.get(url, timeout=5)
         
-        container.Destroy()
-        
-        if not vm_list:
-            return "No VMs found."
-        
-        result = f"Found {len(vm_list)} VMs:\n"
-        for vm in vm_list:
-            result += f"- {vm['name']} ({vm['power_state']}) - {vm['cpu_count']} CPU, {vm['memory_mb']} MB RAM\n"
-        
-        return result
-        
+        if response.status_code == 200:
+            vms = response.json().get('value', [])
+            
+            if not vms:
+                return "No VMs found."
+            
+            result = f"Found {len(vms)} VMs:\n"
+            for vm in vms:
+                name = vm.get('name', 'Unknown')
+                power_state = vm.get('power_state', 'Unknown')
+                cpu_count = vm.get('cpu_count', 0)
+                memory_size_mib = vm.get('memory_size_mib', 0)
+                memory_gb = memory_size_mib // 1024 if memory_size_mib else 0
+                
+                result += f"- {name} ({power_state}) - {cpu_count} CPU, {memory_gb} GB RAM\n"
+            
+            return result
+        else:
+            return f"Error: HTTP {response.status_code}"
+            
     except Exception as e:
         return f"Error listing VMs: {str(e)}"
 
