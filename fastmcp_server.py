@@ -832,6 +832,17 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
         
         # Create clone spec for customization
         clone_spec = vim.vm.CloneSpec()
+        
+        # Create relocation spec (required for location)
+        relospec = vim.vm.RelocateSpec()
+        # Use same datastore as template
+        if template.datastore:
+            relospec.datastore = template.datastore[0]
+        # Use same resource pool as template
+        if template.resourcePool:
+            relospec.pool = template.resourcePool
+        
+        clone_spec.location = relospec
         clone_spec.config = vim.vm.ConfigSpec()
         
         # Customize memory if specified

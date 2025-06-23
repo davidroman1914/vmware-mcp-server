@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir fastmcp
 
 # Copy the mcp-server directory
 COPY mcp-server/ ./mcp-server/
@@ -27,5 +26,5 @@ RUN chmod +x mcp-server/server.py
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Run the MCP server
-CMD ["python", "mcp-server/server.py"] 
+# Run the hybrid FastMCP server
+CMD ["python", "fastmcp_server.py"] 
