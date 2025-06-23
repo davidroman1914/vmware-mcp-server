@@ -1128,10 +1128,14 @@ def create_vm_complete(template_name: str, new_vm_name: str, datastore_name: str
                     datastore = ds
                     break
         
-        # Create VM using the working approach
+        # Create VM using the working ConfigSpec approach (same as create_vm_from_template)
         relospec = vim.vm.RelocateSpec()
         if datastore:
             relospec.datastore = datastore
+        
+        # Use template's resource pool (this is the key difference)
+        if template.resourcePool:
+            relospec.pool = template.resourcePool
         
         configspec = vim.vm.ConfigSpec()
         configspec.location = relospec
@@ -1199,6 +1203,7 @@ def create_vm_complete(template_name: str, new_vm_name: str, datastore_name: str
             else:
                 return f"Network '{network_name}' not found. Use list_networks() to see available networks."
         
+        # Clone the VM using ConfigSpec (this is the working approach)
         task = template.Clone(folder=template.parent, name=new_vm_name, spec=configspec)
         
         # Wait for task to complete
