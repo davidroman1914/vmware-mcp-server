@@ -66,13 +66,17 @@ class VMwareMCPServer:
     
     def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle MCP initialize request."""
+        # Get the tools list
+        tools_response = self.handle_tools_list({"id": params.get("id")})
+        tools = tools_response["result"]["tools"]
+        
         return {
             "jsonrpc": "2.0",
             "id": params.get("id"),
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {}
+                    "tools": tools
                 },
                 "serverInfo": {
                     "name": "vmware-vcenter-mcp-server",
