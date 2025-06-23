@@ -26,7 +26,17 @@ class VMwareMCPServer:
         
     def connect_to_vcenter(self) -> bool:
         """Connect to vCenter using environment variables."""
-        max_retries = 3
+        # Check if already connected
+        if self.service_instance:
+            try:
+                # Test if connection is still alive
+                content = self.service_instance.RetrieveContent()
+                return True
+            except:
+                # Connection is dead, reset it
+                self.service_instance = None
+        
+        max_retries = 2  # Reduced retries for faster failure
         retry_count = 0
         
         while retry_count < max_retries:
@@ -55,7 +65,7 @@ class VMwareMCPServer:
                 
                 # Add timeout to prevent hanging
                 import socket
-                socket.setdefaulttimeout(30)  # 30 second timeout
+                socket.setdefaulttimeout(3)  # 3 second timeout for fast response
                 
                 self.service_instance = SmartConnect(
                     host=host,
@@ -70,9 +80,9 @@ class VMwareMCPServer:
                 retry_count += 1
                 print(f"[ERROR] Connection attempt {retry_count} failed: {e}", file=sys.stderr)
                 if retry_count < max_retries:
-                    print(f"[DEBUG] Retrying in 5 seconds...", file=sys.stderr)
+                    print(f"[DEBUG] Retrying in 2 seconds...", file=sys.stderr)
                     import time
-                    time.sleep(5)
+                    time.sleep(2)
                 else:
                     print(f"[ERROR] All {max_retries} connection attempts failed", file=sys.stderr)
                     return False
