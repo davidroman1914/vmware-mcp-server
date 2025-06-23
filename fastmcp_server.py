@@ -67,9 +67,9 @@ def list_vms() -> str:
     try:
         content = service_instance.RetrieveContent()
         
-        # Use a more targeted container view - only get VMs, not templates
+        # Use a more targeted container view - get VMs from all folders
         container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], False  # False = don't recurse into subfolders
+            content.rootFolder, [vim.VirtualMachine], True  # True = recurse into subfolders
         )
         
         vms = []
@@ -119,7 +119,7 @@ def list_vms_fast() -> str:
         
         # Use a minimal container view for maximum speed
         container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], False
+            content.rootFolder, [vim.VirtualMachine], True  # True = recurse into subfolders
         )
         
         vms = []
