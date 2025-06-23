@@ -60,7 +60,40 @@ def connect_to_vcenter():
 
 @mcp.tool()
 def list_vms() -> str:
-    """List all VMs in vCenter with detailed information."""
+    """List all VMs in vCenter - FAST VERSION."""
+    if not connect_to_vcenter():
+        return "Error: Failed to connect to vCenter. Check environment variables."
+    
+    try:
+        content = service_instance.RetrieveContent()
+        
+        # Use a more efficient query - only get VMs, not all properties
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        # Super fast listing - minimal data only
+        vm_count = 0
+        result = "VMs:\n"
+        
+        for vm in container.view:
+            vm_count += 1
+            power_state = str(vm.runtime.powerState).replace('vim.VirtualMachinePowerState.', '')
+            result += f"- {vm.name} ({power_state})\n"
+        
+        container.Destroy()
+        
+        if vm_count == 0:
+            return "No VMs found."
+        
+        return f"Found {vm_count} VMs:\n" + result
+        
+    except Exception as e:
+        return f"Error listing VMs: {str(e)}"
+
+@mcp.tool()
+def list_vms_detailed() -> str:
+    """List all VMs with detailed information (slower)."""
     if not connect_to_vcenter():
         return "Error: Failed to connect to vCenter. Check environment variables."
     
@@ -70,7 +103,7 @@ def list_vms() -> str:
             content.rootFolder, [vim.VirtualMachine], True
         )
         
-        # Fast listing - only get essential info
+        # Detailed listing - more data but slower
         vm_list = []
         for vm in container.view:
             vm_info = {
@@ -83,7 +116,6 @@ def list_vms() -> str:
         
         container.Destroy()
         
-        # Return formatted result
         if not vm_list:
             return "No VMs found."
         
