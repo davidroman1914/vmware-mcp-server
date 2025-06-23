@@ -471,7 +471,7 @@ def test_create_vm_from_template():
             print("❌ Failed to create VM")
     
     finally:
-        si.Disconnect()
+        Disconnect(si)
         print("🔌 Disconnected from vCenter")
 
 if __name__ == "__main__":
