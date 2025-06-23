@@ -102,17 +102,42 @@ def find_network(service_instance, network_name):
         print(f"❌ Error finding network: {e}")
         return None
 
-def test_simple_clone(template, new_vm_name):
+def find_resource_pool(service_instance):
+    """Find the default resource pool."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.ClusterComputeResource], True
+        )
+        
+        for cluster in container.view:
+            if cluster.resourcePool:
+                print(f"✅ Found resource pool: {cluster.resourcePool.name}")
+                return cluster.resourcePool
+        
+        print("❌ No resource pool found")
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error finding resource pool: {e}")
+        return None
+
+def test_simple_clone(template, new_vm_name, resource_pool):
     """Test simple clone without any customizations."""
     print(f"\n🧪 Testing simple clone: {new_vm_name}")
     
     try:
-        # Use CloneSpec with no customizations
+        # Create relocation spec with resource pool (required)
+        relospec = vim.vm.RelocateSpec()
+        relospec.pool = resource_pool
+        
+        # Create clone spec
         clone_spec = vim.vm.CloneSpec()
+        clone_spec.location = relospec
         clone_spec.powerOn = False
         clone_spec.template = False
         
-        print("📋 Clone spec created successfully")
+        print("📋 Clone spec with resource pool created successfully")
         
         # Clone the VM
         task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
@@ -133,14 +158,15 @@ def test_simple_clone(template, new_vm_name):
         print(f"❌ Simple clone error: {e}")
         return False
 
-def test_with_datastore(template, new_vm_name, datastore):
+def test_with_datastore(template, new_vm_name, datastore, resource_pool):
     """Test clone with datastore specification."""
     print(f"\n🧪 Testing clone with datastore: {new_vm_name}")
     
     try:
-        # Create relocation spec
+        # Create relocation spec with both datastore and resource pool
         relospec = vim.vm.RelocateSpec()
         relospec.datastore = datastore
+        relospec.pool = resource_pool
         
         # Create clone spec
         clone_spec = vim.vm.CloneSpec()
@@ -148,7 +174,7 @@ def test_with_datastore(template, new_vm_name, datastore):
         clone_spec.powerOn = False
         clone_spec.template = False
         
-        print("📋 Clone spec with datastore created successfully")
+        print("📋 Clone spec with datastore and resource pool created successfully")
         
         # Clone the VM
         task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
@@ -169,14 +195,15 @@ def test_with_datastore(template, new_vm_name, datastore):
         print(f"❌ Clone with datastore error: {e}")
         return False
 
-def test_with_customizations(template, new_vm_name, datastore, network):
+def test_with_customizations(template, new_vm_name, datastore, network, resource_pool):
     """Test clone with customizations."""
     print(f"\n🧪 Testing clone with customizations: {new_vm_name}")
     
     try:
-        # Create relocation spec
+        # Create relocation spec with both datastore and resource pool
         relospec = vim.vm.RelocateSpec()
         relospec.datastore = datastore
+        relospec.pool = resource_pool
         
         # Create clone spec
         clone_spec = vim.vm.CloneSpec()
@@ -276,18 +303,23 @@ def main():
         if not network:
             return
         
+        # Find resource pool
+        resource_pool = find_resource_pool(service_instance)
+        if not resource_pool:
+            return
+        
         print("\n" + "=" * 50)
         print("🧪 Starting VM Creation Tests")
         print("=" * 50)
         
         # Test 1: Simple clone
-        success1 = test_simple_clone(template, f"{NEW_VM_NAME}-simple")
+        success1 = test_simple_clone(template, f"{NEW_VM_NAME}-simple", resource_pool)
         
         # Test 2: Clone with datastore
-        success2 = test_with_datastore(template, f"{NEW_VM_NAME}-datastore", datastore)
+        success2 = test_with_datastore(template, f"{NEW_VM_NAME}-datastore", datastore, resource_pool)
         
         # Test 3: Clone with customizations
-        success3 = test_with_customizations(template, f"{NEW_VM_NAME}-custom", datastore, network)
+        success3 = test_with_customizations(template, f"{NEW_VM_NAME}-custom", datastore, network, resource_pool)
         
         print("\n" + "=" * 50)
         print("📊 Test Results Summary")
