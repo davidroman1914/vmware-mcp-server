@@ -14,6 +14,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the mcp-server directory
 COPY mcp-server/ ./mcp-server/
 
+# Copy additional test files
+COPY minimal_mcp_server.py .
+COPY test_mcp_client.py .
+
 # Make server executable
 RUN chmod +x mcp-server/server.py
 
