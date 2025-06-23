@@ -107,7 +107,7 @@ class VMwareMCPServer:
             "jsonrpc": "2.0",
             "id": params.get("id"),
             "result": {
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": "2025-03-26",
                 "capabilities": {
                     "tools": tools
                 },
@@ -409,7 +409,7 @@ class VMwareMCPServer:
                 
                 print(f"[DEBUG] Sending response: {json.dumps(response)}", file=sys.stderr)
                 # Send response to stdout
-                print(json.dumps(response), end='')
+                print(json.dumps(response))
                 sys.stdout.flush()
                 
             except json.JSONDecodeError as e:
@@ -428,7 +428,7 @@ class VMwareMCPServer:
                         "message": f"Server error: {str(e)}"
                     }
                 }
-                print(json.dumps(error_response), end='')
+                print(json.dumps(error_response))
                 sys.stdout.flush()
         
         # Cleanup
