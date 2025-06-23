@@ -1,28 +1,31 @@
 #!/usr/bin/env python3
 """
-VMware vCenter MCP Server using pyvmomi
-Supports VM listing, power management, and VM creation via MCP stdio protocol.
+VMware MCP Server using hybrid approach:
+- vmware-vcenter REST API for fast operations (listing, power management)
+- pyvmomi for VM creation (advanced features)
 """
 
 import json
 import sys
 import os
-from typing import Dict, Any, List, Optional
+import ssl
+from typing import Dict, Any
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
-import ssl
 
 # Import our modules
-from vm_info import VMInfoManager
+from vm_info import VMInfoManager  # pyvmomi for VM creation
+from vm_info_rest import VMInfoManagerREST  # REST API for fast operations
 from power import PowerManager
 from vm_creation import VMCreationManager
 
 class VMwareMCPServer:
     def __init__(self):
-        self.vm_info = VMInfoManager()
+        self.service_instance = None  # pyvmomi connection
+        self.rest_manager = VMInfoManagerREST()  # REST API manager
+        self.vm_info = VMInfoManager()  # pyvmomi for VM creation
         self.power_manager = PowerManager()
         self.vm_creation = VMCreationManager()
-        self.service_instance = None
         
     def connect_to_vcenter(self) -> bool:
         """Connect to vCenter using environment variables."""
@@ -231,21 +234,10 @@ class VMwareMCPServer:
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
         
-        # Ensure we're connected to vCenter
-        if not self.service_instance:
-            if not self.connect_to_vcenter():
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "error": {
-                        "code": -1,
-                        "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
-                    }
-                }
-        
         try:
             if tool_name == "list_vms":
-                result = self.vm_info.fast_list_vms(self.service_instance)
+                # Use REST API for fast VM listing
+                result = self.rest_manager.list_all_vms()
                 return {
                     "jsonrpc": "2.0",
                     "id": params.get("id"),
@@ -260,8 +252,9 @@ class VMwareMCPServer:
                 }
             
             elif tool_name == "power_on_vm":
+                # Use REST API for fast power operations
                 vm_name = arguments.get("vm_name")
-                result = self.power_manager.power_on_vm(self.service_instance, vm_name)
+                result = self.rest_manager.power_on_vm(vm_name)
                 return {
                     "jsonrpc": "2.0",
                     "id": params.get("id"),
@@ -276,8 +269,9 @@ class VMwareMCPServer:
                 }
             
             elif tool_name == "power_off_vm":
+                # Use REST API for fast power operations
                 vm_name = arguments.get("vm_name")
-                result = self.power_manager.power_off_vm(self.service_instance, vm_name)
+                result = self.rest_manager.power_off_vm(vm_name)
                 return {
                     "jsonrpc": "2.0",
                     "id": params.get("id"),
@@ -292,6 +286,18 @@ class VMwareMCPServer:
                 }
             
             elif tool_name == "create_vm_from_template":
+                # Use pyvmomi for VM creation (advanced features)
+                if not self.service_instance:
+                    if not self.connect_to_vcenter():
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": params.get("id"),
+                            "error": {
+                                "code": -1,
+                                "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
+                            }
+                        }
+                
                 result = self.vm_creation.create_vm_from_template(self.service_instance, arguments)
                 return {
                     "jsonrpc": "2.0",
