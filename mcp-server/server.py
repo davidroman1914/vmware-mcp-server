@@ -327,7 +327,7 @@ class VMwareMCPServer:
                     }
                 
                 # Send response to stdout
-                print(json.dumps(response))
+                print(json.dumps(response), end='')
                 sys.stdout.flush()
                 
             except json.JSONDecodeError:
@@ -343,7 +343,7 @@ class VMwareMCPServer:
                         "message": f"Server error: {str(e)}"
                     }
                 }
-                print(json.dumps(error_response))
+                print(json.dumps(error_response), end='')
                 sys.stdout.flush()
         
         # Cleanup
