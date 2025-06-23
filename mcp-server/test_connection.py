@@ -8,6 +8,7 @@ import os
 import sys
 import ssl
 from pyVim.connect import SmartConnect, Disconnect
+from pyVmomi import vim
 
 def test_vcenter_connection():
     """Test vCenter connection with detailed debug output."""
@@ -72,6 +73,34 @@ def test_vcenter_connection():
         print("[DEBUG] Testing fast VM listing...")
         from vm_info import VMInfoManager
         vm_info = VMInfoManager()
+        
+        print("[DEBUG] Creating container view...")
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        print(f"[DEBUG] Container view created, found {len(container.view)} VMs")
+        
+        print("[DEBUG] Starting VM iteration...")
+        count = 0
+        for vm in container.view:
+            count += 1
+            if count <= 3:  # Only process first 3 VMs for testing
+                print(f"[DEBUG] Processing VM {count}: {vm.name}")
+                vm_info_basic = {
+                    "name": vm.name,
+                    "power_state": vm.runtime.powerState,
+                }
+                print(f"[DEBUG] VM {count} info: {vm_info_basic}")
+            else:
+                break
+        
+        print(f"[DEBUG] Successfully processed {count} VMs")
+        container.Destroy()
+        print("[DEBUG] Container view destroyed")
+        
+        # Now test the actual method
+        print("[DEBUG] Testing fast_list_vms method...")
         vms = vm_info.fast_list_vms(service_instance)
         print(f"[INFO] Found {len(vms)} VMs using fast listing")
         for vm in vms[:3]:  # Show first 3 VMs
