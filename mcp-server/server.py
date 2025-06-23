@@ -108,8 +108,9 @@ class VMwareMCPServer:
             "id": params.get("id"),
             "result": {
                 "protocolVersion": "2025-03-26",
-                "capabilities": True,  # Goose expects a boolean, not an object
-                "tools": tools,  # Move tools to top level
+                "capabilities": {
+                    "tools": tools
+                },
                 "serverInfo": {
                     "name": "vmware-vcenter-mcp-server",
                     "version": "1.0.0"
