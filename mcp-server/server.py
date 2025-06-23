@@ -26,44 +26,58 @@ class VMwareMCPServer:
         
     def connect_to_vcenter(self) -> bool:
         """Connect to vCenter using environment variables."""
-        try:
-            print("[DEBUG] Reading vCenter connection environment variables...", file=sys.stderr)
-            host = os.getenv('VCENTER_HOST')
-            user = os.getenv('VCENTER_USER')
-            password = os.getenv('VCENTER_PASSWORD')
-            insecure = os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
-            print(f"[DEBUG] host={host}, user={user}, insecure={insecure}", file=sys.stderr)
-            
-            if not all([host, user, password]):
-                print("[ERROR] Missing vCenter connection environment variables.", file=sys.stderr)
-                return False
-            
-            # Create SSL context
-            if insecure:
-                print("[DEBUG] Using insecure SSL context (CERT_NONE)", file=sys.stderr)
-                context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-                context.verify_mode = ssl.CERT_NONE
-            else:
-                print("[DEBUG] Using default SSL context", file=sys.stderr)
-                context = ssl.create_default_context()
-            
-            print("[DEBUG] Connecting to vCenter...", file=sys.stderr)
-            
-            # Add timeout to prevent hanging
-            import socket
-            socket.setdefaulttimeout(30)  # 30 second timeout
-            
-            self.service_instance = SmartConnect(
-                host=host,
-                user=user,
-                pwd=password,
-                sslContext=context
-            )
-            print("[DEBUG] Connected to vCenter successfully!", file=sys.stderr)
-            return True
-        except Exception as e:
-            print(f"[ERROR] Exception connecting to vCenter: {e}", file=sys.stderr)
-            return False
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                print(f"[DEBUG] Attempting vCenter connection (attempt {retry_count + 1}/{max_retries})...", file=sys.stderr)
+                host = os.getenv('VCENTER_HOST')
+                user = os.getenv('VCENTER_USER')
+                password = os.getenv('VCENTER_PASSWORD')
+                insecure = os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
+                print(f"[DEBUG] host={host}, user={user}, insecure={insecure}", file=sys.stderr)
+                
+                if not all([host, user, password]):
+                    print("[ERROR] Missing vCenter connection environment variables.", file=sys.stderr)
+                    return False
+                
+                # Create SSL context
+                if insecure:
+                    print("[DEBUG] Using insecure SSL context (CERT_NONE)", file=sys.stderr)
+                    context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+                    context.verify_mode = ssl.CERT_NONE
+                else:
+                    print("[DEBUG] Using default SSL context", file=sys.stderr)
+                    context = ssl.create_default_context()
+                
+                print("[DEBUG] Connecting to vCenter...", file=sys.stderr)
+                
+                # Add timeout to prevent hanging
+                import socket
+                socket.setdefaulttimeout(30)  # 30 second timeout
+                
+                self.service_instance = SmartConnect(
+                    host=host,
+                    user=user,
+                    pwd=password,
+                    sslContext=context
+                )
+                print("[DEBUG] Connected to vCenter successfully!", file=sys.stderr)
+                return True
+                
+            except Exception as e:
+                retry_count += 1
+                print(f"[ERROR] Connection attempt {retry_count} failed: {e}", file=sys.stderr)
+                if retry_count < max_retries:
+                    print(f"[DEBUG] Retrying in 5 seconds...", file=sys.stderr)
+                    import time
+                    time.sleep(5)
+                else:
+                    print(f"[ERROR] All {max_retries} connection attempts failed", file=sys.stderr)
+                    return False
+        
+        return False
     
     def disconnect_from_vcenter(self):
         """Disconnect from vCenter."""
