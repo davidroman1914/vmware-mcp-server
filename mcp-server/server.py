@@ -216,7 +216,7 @@ class VMwareMCPServer:
         
         try:
             if tool_name == "list_vms":
-                result = self.vm_info.list_all_vms(self.service_instance)
+                result = self.vm_info.fast_list_vms(self.service_instance)
                 return {
                     "jsonrpc": "2.0",
                     "id": params.get("id"),
