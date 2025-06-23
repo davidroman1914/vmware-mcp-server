@@ -27,32 +27,37 @@ class VMwareMCPServer:
     def connect_to_vcenter(self) -> bool:
         """Connect to vCenter using environment variables."""
         try:
+            print("[DEBUG] Reading vCenter connection environment variables...", file=sys.stderr)
             host = os.getenv('VCENTER_HOST')
             user = os.getenv('VCENTER_USER')
             password = os.getenv('VCENTER_PASSWORD')
             insecure = os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
+            print(f"[DEBUG] host={host}, user={user}, insecure={insecure}", file=sys.stderr)
             
             if not all([host, user, password]):
+                print("[ERROR] Missing vCenter connection environment variables.", file=sys.stderr)
                 return False
             
             # Create SSL context
             if insecure:
+                print("[DEBUG] Using insecure SSL context (CERT_NONE)", file=sys.stderr)
                 context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
                 context.verify_mode = ssl.CERT_NONE
             else:
+                print("[DEBUG] Using default SSL context", file=sys.stderr)
                 context = ssl.create_default_context()
             
-            # Connect to vCenter
+            print("[DEBUG] Connecting to vCenter...", file=sys.stderr)
             self.service_instance = SmartConnect(
                 host=host,
                 user=user,
                 pwd=password,
                 sslContext=context
             )
-            
+            print("[DEBUG] Connected to vCenter successfully!", file=sys.stderr)
             return True
-            
         except Exception as e:
+            print(f"[ERROR] Exception connecting to vCenter: {e}", file=sys.stderr)
             return False
     
     def disconnect_from_vcenter(self):
