@@ -143,8 +143,15 @@ def list_vms_fast() -> str:
                 result = []
                 
                 for vm in vms:
-                    # Handle different possible memory field names
-                    memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
+                    # Handle different possible memory field names from VMware REST API
+                    memory_mb = (
+                        vm.get('memory_MiB') or 
+                        vm.get('memory_size_mib') or 
+                        vm.get('memory_mb') or
+                        vm.get('memory') or
+                        vm.get('memory_size') or
+                        0
+                    )
                     vm_info = {
                         'name': vm['name'],
                         'power_state': vm['power_state'],
@@ -218,8 +225,15 @@ def get_vm_details_fast(vm_name: str) -> str:
                 vm = next((v for v in vms if v['name'] == vm_name), None)
                 
                 if vm:
-                    # Handle different possible memory field names
-                    memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
+                    # Handle different possible memory field names from VMware REST API
+                    memory_mb = (
+                        vm.get('memory_MiB') or 
+                        vm.get('memory_size_mib') or 
+                        vm.get('memory_mb') or
+                        vm.get('memory') or
+                        vm.get('memory_size') or
+                        0
+                    )
                     details = {
                         'name': vm['name'],
                         'power_state': vm['power_state'],
@@ -481,6 +495,50 @@ def debug_connection() -> str:
         result.append("✗ REST API: Connection failed")
     
     return "Connection Status:\n" + "\n".join(result)
+
+@mcp.tool()
+def debug_rest_api_response() -> str:
+    """Debug tool to show raw REST API response structure for VM data."""
+    session_id = get_vcenter_session()
+    if not session_id:
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        host = os.getenv('VCENTER_HOST')
+        headers = {'vmware-api-session-id': session_id}
+        
+        # Get VMs
+        vm_url = f"https://{host}/rest/vcenter/vm"
+        response = requests.get(vm_url, headers=headers, verify=False, timeout=5)
+        
+        if response.status_code == 200:
+            vms = response.json()['value']
+            
+            if not vms:
+                return "No VMs found in REST API response"
+            
+            # Show the first VM's complete structure
+            first_vm = vms[0]
+            result = f"REST API Response Structure for VM '{first_vm.get('name', 'Unknown')}':\n\n"
+            
+            for key, value in first_vm.items():
+                result += f"  {key}: {value} (type: {type(value).__name__})\n"
+            
+            # Also show all available memory-related fields
+            memory_fields = [k for k in first_vm.keys() if 'memory' in k.lower()]
+            if memory_fields:
+                result += f"\nMemory-related fields found:\n"
+                for field in memory_fields:
+                    result += f"  {field}: {first_vm[field]}\n"
+            else:
+                result += f"\nNo memory-related fields found in response\n"
+            
+            return result
+        else:
+            return f"Error: Failed to get VMs (HTTP {response.status_code})"
+            
+    except Exception as e:
+        return f"Error: {e}"
 
 if __name__ == "__main__":
     mcp.run() 
