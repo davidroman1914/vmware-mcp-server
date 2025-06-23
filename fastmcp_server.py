@@ -126,9 +126,51 @@ def get_vcenter_session():
 
 @mcp.tool()
 def list_vms_fast() -> str:
-    """List all VMs using vmware-vcenter for maximum speed."""
-    client = get_vcenter_client()
+    """List all VMs using REST API for complete data, vmware-vcenter as fallback."""
+    # Try REST API first (more complete data)
+    session_id = get_vcenter_session()
+    if session_id:
+        try:
+            host = os.getenv('VCENTER_HOST')
+            headers = {'vmware-api-session-id': session_id}
+            
+            # Get VMs
+            vm_url = f"https://{host}/rest/vcenter/vm"
+            response = requests.get(vm_url, headers=headers, verify=False, timeout=5)
+            
+            if response.status_code == 200:
+                vms = response.json()['value']
+                result = []
+                
+                for vm in vms:
+                    # Handle different possible memory field names
+                    memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
+                    vm_info = {
+                        'name': vm['name'],
+                        'power_state': vm['power_state'],
+                        'cpu_count': vm['cpu_count'],
+                        'memory_mb': memory_mb,
+                        'memory_gb': round(memory_mb / 1024, 1) if memory_mb else 0,
+                        'vm_id': vm['vm']
+                    }
+                    result.append(vm_info)
+                
+                return f"Found {len(result)} VMs using REST API:\n" + "\n".join([
+                    f"- {vm['name']} ({vm['power_state']}, {vm['cpu_count']} CPU, {vm['memory_gb']} GB RAM)"
+                    for vm in result
+                ])
+            else:
+                print(f"REST API failed: HTTP {response.status_code}", file=sys.stderr)
+                # Fall back to vmware-vcenter
+                pass
+                
+        except Exception as e:
+            print(f"REST API error: {e}", file=sys.stderr)
+            # Fall back to vmware-vcenter
+            pass
     
+    # Fallback to vmware-vcenter (less complete data)
+    client = get_vcenter_client()
     if client:
         try:
             # Use vmware-vcenter for fast listing
@@ -141,66 +183,71 @@ def list_vms_fast() -> str:
                     'power_state': vm.power_state,
                     'cpu_count': vm.cpu_count,
                     'memory_mb': vm.memory_mb,
-                    'memory_gb': round(vm.memory_mb / 1024, 1),
+                    'memory_gb': round(vm.memory_mb / 1024, 1) if vm.memory_mb else 0,
                     'vm_id': vm.vm_id
                 }
                 result.append(vm_info)
             
-            return f"Found {len(result)} VMs using vmware-vcenter:\n" + "\n".join([
+            return f"Found {len(result)} VMs using vmware-vcenter (limited data):\n" + "\n".join([
                 f"- {vm['name']} ({vm['power_state']}, {vm['cpu_count']} CPU, {vm['memory_gb']} GB RAM)"
                 for vm in result
             ])
             
         except Exception as e:
             print(f"vmware-vcenter error: {e}", file=sys.stderr)
-            # Fall back to REST API
-            pass
+            return f"Error: Both REST API and vmware-vcenter failed - {e}"
     
-    # Fallback to REST API
-    session_id = get_vcenter_session()
-    if not session_id:
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        host = os.getenv('VCENTER_HOST')
-        headers = {'vmware-api-session-id': session_id}
-        
-        # Get VMs
-        vm_url = f"https://{host}/rest/vcenter/vm"
-        response = requests.get(vm_url, headers=headers, verify=False, timeout=5)
-        
-        if response.status_code == 200:
-            vms = response.json()['value']
-            result = []
-            
-            for vm in vms:
-                # Handle different possible memory field names
-                memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
-                vm_info = {
-                    'name': vm['name'],
-                    'power_state': vm['power_state'],
-                    'cpu_count': vm['cpu_count'],
-                    'memory_mb': memory_mb,
-                    'memory_gb': round(memory_mb / 1024, 1) if memory_mb else 0,
-                    'vm_id': vm['vm']
-                }
-                result.append(vm_info)
-            
-            return f"Found {len(result)} VMs using REST API:\n" + "\n".join([
-                f"- {vm['name']} ({vm['power_state']}, {vm['cpu_count']} CPU, {vm['memory_gb']} GB RAM)"
-                for vm in result
-            ])
-        else:
-            return f"Error: Failed to get VMs (HTTP {response.status_code})"
-            
-    except Exception as e:
-        return f"Error: {e}"
+    return "Error: Could not connect to vCenter using any method"
 
 @mcp.tool()
 def get_vm_details_fast(vm_name: str) -> str:
-    """Get detailed VM information using vmware-vcenter."""
-    client = get_vcenter_client()
+    """Get detailed VM information using REST API for complete data, vmware-vcenter as fallback."""
+    # Try REST API first (more complete data)
+    session_id = get_vcenter_session()
+    if session_id:
+        try:
+            host = os.getenv('VCENTER_HOST')
+            headers = {'vmware-api-session-id': session_id}
+            
+            # Get VM by name
+            vm_url = f"https://{host}/rest/vcenter/vm"
+            response = requests.get(vm_url, headers=headers, verify=False, timeout=5)
+            
+            if response.status_code == 200:
+                vms = response.json()['value']
+                vm = next((v for v in vms if v['name'] == vm_name), None)
+                
+                if vm:
+                    # Handle different possible memory field names
+                    memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
+                    details = {
+                        'name': vm['name'],
+                        'power_state': vm['power_state'],
+                        'cpu_count': vm['cpu_count'],
+                        'memory_mb': memory_mb,
+                        'memory_gb': round(memory_mb / 1024, 1) if memory_mb else 0,
+                        'vm_id': vm['vm'],
+                        'guest_id': vm.get('guest_ID', 'N/A'),
+                        'version': vm.get('version', 'N/A')
+                    }
+                    
+                    return f"VM Details (REST API):\n" + "\n".join([
+                        f"- {key}: {value}" for key, value in details.items()
+                    ])
+                else:
+                    return f"VM '{vm_name}' not found"
+            else:
+                print(f"REST API failed: HTTP {response.status_code}", file=sys.stderr)
+                # Fall back to vmware-vcenter
+                pass
+                
+        except Exception as e:
+            print(f"REST API error: {e}", file=sys.stderr)
+            # Fall back to vmware-vcenter
+            pass
     
+    # Fallback to vmware-vcenter (less complete data)
+    client = get_vcenter_client()
     if client:
         try:
             # Use vmware-vcenter for fast details
@@ -211,13 +258,13 @@ def get_vm_details_fast(vm_name: str) -> str:
                     'power_state': vm.power_state,
                     'cpu_count': vm.cpu_count,
                     'memory_mb': vm.memory_mb,
-                    'memory_gb': round(vm.memory_mb / 1024, 1),
+                    'memory_gb': round(vm.memory_mb / 1024, 1) if vm.memory_mb else 0,
                     'vm_id': vm.vm_id,
-                    'guest_id': vm.guest_id,
-                    'version': vm.version
+                    'guest_id': getattr(vm, 'guest_id', 'N/A'),
+                    'version': getattr(vm, 'version', 'N/A')
                 }
                 
-                return f"VM Details (vmware-vcenter):\n" + "\n".join([
+                return f"VM Details (vmware-vcenter - limited data):\n" + "\n".join([
                     f"- {key}: {value}" for key, value in details.items()
                 ])
             else:
@@ -225,50 +272,9 @@ def get_vm_details_fast(vm_name: str) -> str:
                 
         except Exception as e:
             print(f"vmware-vcenter error: {e}", file=sys.stderr)
-            # Fall back to REST API
-            pass
+            return f"Error: Both REST API and vmware-vcenter failed - {e}"
     
-    # Fallback to REST API
-    session_id = get_vcenter_session()
-    if not session_id:
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        host = os.getenv('VCENTER_HOST')
-        headers = {'vmware-api-session-id': session_id}
-        
-        # Get VM by name
-        vm_url = f"https://{host}/rest/vcenter/vm"
-        response = requests.get(vm_url, headers=headers, verify=False, timeout=5)
-        
-        if response.status_code == 200:
-            vms = response.json()['value']
-            vm = next((v for v in vms if v['name'] == vm_name), None)
-            
-            if vm:
-                # Handle different possible memory field names
-                memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
-                details = {
-                    'name': vm['name'],
-                    'power_state': vm['power_state'],
-                    'cpu_count': vm['cpu_count'],
-                    'memory_mb': memory_mb,
-                    'memory_gb': round(memory_mb / 1024, 1) if memory_mb else 0,
-                    'vm_id': vm['vm'],
-                    'guest_id': vm.get('guest_ID', 'N/A'),
-                    'version': vm.get('version', 'N/A')
-                }
-                
-                return f"VM Details (REST API):\n" + "\n".join([
-                    f"- {key}: {value}" for key, value in details.items()
-                ])
-            else:
-                return f"VM '{vm_name}' not found"
-        else:
-            return f"Error: Failed to get VMs (HTTP {response.status_code})"
-            
-    except Exception as e:
-        return f"Error: {e}"
+    return "Error: Could not connect to vCenter using any method"
 
 @mcp.tool()
 def power_on_vm(vm_name: str) -> str:
