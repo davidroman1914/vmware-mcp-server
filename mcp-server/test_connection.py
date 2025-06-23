@@ -7,7 +7,9 @@ Tests only the connection to vCenter with detailed debug output.
 import os
 import sys
 import ssl
-from pyVim.connect import SmartConnect, Disconnect
+import time
+from pyVim import connect
+from pyVim.connect import Disconnect
 from pyVmomi import vim
 
 def test_vcenter_connection():
@@ -38,26 +40,24 @@ def test_vcenter_connection():
         return False
     
     try:
-        # Create SSL context
-        print("[DEBUG] Creating SSL context...")
-        if insecure:
-            print("[DEBUG] Using insecure SSL context (CERT_NONE)")
-            context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-            context.verify_mode = ssl.CERT_NONE
-        else:
-            print("[DEBUG] Using default SSL context")
-            context = ssl.create_default_context()
+        # Test SmartConnect with disabled SSL for faster connections
+        print("[DEBUG] Testing SmartConnect with disabled SSL...")
+        start_time = time.time()
         
-        # Attempt connection
-        print(f"[DEBUG] Attempting to connect to vCenter at {host}...")
-        service_instance = SmartConnect(
+        # Create a completely disabled SSL context
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context.verify_mode = ssl.CERT_NONE
+        context.check_hostname = False
+        
+        service_instance = connect.SmartConnect(
             host=host,
             user=user,
             pwd=password,
             sslContext=context
         )
         
-        print("[SUCCESS] Connected to vCenter successfully!")
+        connection_time = time.time() - start_time
+        print(f"[SUCCESS] Connected to vCenter successfully in {connection_time:.2f} seconds!")
         
         # Get basic info
         print("[DEBUG] Getting vCenter information...")
@@ -120,8 +120,8 @@ def test_vcenter_connection():
 
 def main():
     """Main function."""
-    print("vCenter Connection Test")
-    print("======================")
+    print("vCenter Connection Test (SmartConnectNoSSL)")
+    print("==========================================")
     
     success = test_vcenter_connection()
     

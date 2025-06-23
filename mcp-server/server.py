@@ -55,20 +55,16 @@ class VMwareMCPServer:
                     print("[ERROR] Missing vCenter connection environment variables.", file=sys.stderr)
                     return False
                 
-                # Create SSL context
-                if insecure:
-                    print("[DEBUG] Using insecure SSL context (CERT_NONE)", file=sys.stderr)
-                    context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-                    context.verify_mode = ssl.CERT_NONE
-                else:
-                    print("[DEBUG] Using default SSL context", file=sys.stderr)
-                    context = ssl.create_default_context()
-                
                 print("[DEBUG] Connecting to vCenter...", file=sys.stderr)
                 
                 # Add timeout to prevent hanging
                 import socket
-                socket.setdefaulttimeout(3)  # 3 second timeout for fast response
+                socket.setdefaulttimeout(3)  # 3 second timeout
+                
+                # Create a completely disabled SSL context for non-SSL connections
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+                context.verify_mode = ssl.CERT_NONE
+                context.check_hostname = False
                 
                 self.service_instance = SmartConnect(
                     host=host,
