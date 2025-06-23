@@ -68,6 +68,15 @@ def test_vcenter_connection():
         print(f"[INFO] vCenter name: {about.name}")
         print(f"[INFO] vCenter full name: {about.fullName}")
         
+        # Test fast VM listing
+        print("[DEBUG] Testing fast VM listing...")
+        from vm_info import VMInfoManager
+        vm_info = VMInfoManager()
+        vms = vm_info.fast_list_vms(service_instance)
+        print(f"[INFO] Found {len(vms)} VMs using fast listing")
+        for vm in vms[:3]:  # Show first 3 VMs
+            print(f"  - {vm['name']} ({vm['power_state']})")
+        
         # Disconnect
         print("[DEBUG] Disconnecting from vCenter...")
         Disconnect(service_instance)

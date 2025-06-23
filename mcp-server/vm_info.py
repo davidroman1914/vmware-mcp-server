@@ -76,4 +76,51 @@ class VMInfoManager:
             return None
             
         except Exception as e:
-            return None 
+            return None
+    
+    def fast_list_vms(self, service_instance) -> List[Dict[str, Any]]:
+        """List all VMs with basic information only (fast version)."""
+        try:
+            content = service_instance.RetrieveContent()
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.VirtualMachine], True
+            )
+            
+            vms = []
+            for vm in container.view:
+                # Only get basic properties that are fast to access
+                vm_info = {
+                    "name": vm.name,
+                    "power_state": vm.runtime.powerState,
+                    "guest_id": getattr(vm.config, 'guestId', 'Unknown'),
+                    "template": getattr(vm.config, 'template', False),
+                }
+                
+                # Only get hardware info if it's safe
+                try:
+                    if hasattr(vm.config, 'hardware') and vm.config.hardware:
+                        vm_info["cpu_count"] = vm.config.hardware.numCPU
+                        vm_info["memory_mb"] = vm.config.hardware.memoryMB
+                    else:
+                        vm_info["cpu_count"] = 0
+                        vm_info["memory_mb"] = 0
+                except:
+                    vm_info["cpu_count"] = 0
+                    vm_info["memory_mb"] = 0
+                
+                # Only get guest info if it's available and fast
+                try:
+                    if vm.guest and vm.guest.ipAddress:
+                        vm_info["ip_address"] = vm.guest.ipAddress
+                    else:
+                        vm_info["ip_address"] = None
+                except:
+                    vm_info["ip_address"] = None
+                
+                vms.append(vm_info)
+            
+            container.Destroy()
+            return vms
+            
+        except Exception as e:
+            return [{"error": f"Failed to list VMs: {str(e)}"}] 
