@@ -19,6 +19,7 @@ COPY minimal_mcp_server.py .
 COPY test_mcp_client.py .
 COPY fastmcp_server.py .
 COPY simple_fastmcp_server.py .
+COPY vm_creation_test.py .
 
 # Make server executable
 RUN chmod +x mcp-server/server.py
