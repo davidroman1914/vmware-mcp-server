@@ -807,8 +807,8 @@ def list_networks() -> str:
         return f"Error: {e}"
 
 @mcp.tool()
-def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None, cpu_count: int = None) -> str:
-    """Create a new VM from template with custom memory and CPU (no IP customization)."""
+def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None, cpu_count: int = None, disk_gb: int = None, network_name: str = None) -> str:
+    """Create a new VM from template with custom memory, CPU, disk size, and network."""
     if not connect_to_vcenter():
         return "Error: Could not connect to vCenter"
     
@@ -843,6 +843,70 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
             config_spec.numCoresPerSocket = cpu_count
             config_spec.cpuHotAddEnabled = True
         
+        # Customize disk size if specified
+        if disk_gb:
+            # Find the first virtual disk in the template
+            template_disk = None
+            for device in template.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualDisk):
+                    template_disk = device
+                    break
+            
+            if template_disk:
+                # Create disk spec
+                disk_spec = vim.vm.device.VirtualDeviceSpec()
+                disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                disk_spec.device = vim.vm.device.VirtualDisk()
+                disk_spec.device.key = template_disk.key
+                disk_spec.device.capacityInKB = disk_gb * 1024 * 1024  # Convert GB to KB
+                disk_spec.device.backing = template_disk.backing
+                
+                config_spec.deviceChange = [disk_spec]
+        
+        # Customize network if specified
+        if network_name:
+            # Find network
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
+            )
+            
+            network = None
+            for net in container.view:
+                if net.name == network_name:
+                    network = net
+                    break
+            
+            if network:
+                # Create network adapter spec
+                nic_spec = vim.vm.device.VirtualDeviceSpec()
+                nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
+                
+                # Create network adapter
+                nic_spec.device = vim.vm.device.VirtualVmxnet3()
+                nic_spec.device.key = -1
+                nic_spec.device.deviceInfo = vim.Description()
+                nic_spec.device.deviceInfo.label = "Network adapter 1"
+                nic_spec.device.deviceInfo.summary = network_name
+                
+                # Connect to network
+                if isinstance(network, vim.dvs.DistributedVirtualPortgroup):
+                    nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                    nic_spec.device.backing.port = vim.dvs.PortConnection()
+                    nic_spec.device.backing.port.portgroupKey = network.key
+                    nic_spec.device.backing.port.switchUuid = network.config.distributedVirtualSwitch.uuid
+                else:
+                    nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                    nic_spec.device.backing.network = network
+                    nic_spec.device.backing.deviceName = network_name
+                
+                # Add network spec to device changes
+                if config_spec.deviceChange:
+                    config_spec.deviceChange.append(nic_spec)
+                else:
+                    config_spec.deviceChange = [nic_spec]
+            else:
+                return f"Network '{network_name}' not found. Use list_networks() to see available networks."
+        
         # Clone the VM
         task = template.Clone(folder=template.parent, name=new_vm_name, spec=config_spec)
         
@@ -856,6 +920,10 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
                 result += f"\n- Memory: {memory_gb} GB"
             if cpu_count:
                 result += f"\n- CPU: {cpu_count} cores"
+            if disk_gb:
+                result += f"\n- Disk: {disk_gb} GB"
+            if network_name:
+                result += f"\n- Network: {network_name}"
             result += f"\n\n💡 Note: IP address will be assigned via DHCP. You can configure static IP after powering on the VM."
             return result
         else:
