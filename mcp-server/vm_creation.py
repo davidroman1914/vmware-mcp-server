@@ -95,7 +95,7 @@ class VMCreationManager:
                 # Identity
                 identity = vim.vm.customization.LinuxPrep()
                 identity.hostName = vim.vm.customization.FixedName(name=hostname)
-                identity.domain = vim.vm.customization.FixedName(name="local")
+                identity.domain = "local"
                 customizationspec.identity = identity
                 
                 # Network interface
