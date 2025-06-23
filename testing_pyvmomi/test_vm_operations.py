@@ -679,40 +679,83 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
         clone_spec.powerOn = False  # Keep powered off initially
         clone_spec.template = False
         
-        # Add hardware customization if specified
-        if customization_params and ('cpu_count' in customization_params or 'memory_mb' in customization_params or 'disk_size_gb' in customization_params):
+        # Configure hardware customization
+        if any(k in customization_params for k in ['cpu_count', 'memory_mb', 'disk_size_gb', 'ip_address', 'netmask', 'gateway']):
             clone_spec.config = vim.vm.ConfigSpec()
+            clone_spec.config.deviceChange = []
             
+            # CPU customization
             if 'cpu_count' in customization_params:
                 clone_spec.config.numCPUs = customization_params['cpu_count']
-                print(f"🔧 Setting CPU count to {customization_params['cpu_count']} cores")
+                print(f"🔧 Setting CPU count to {customization_params['cpu_count']}")
             
+            # Memory customization
             if 'memory_mb' in customization_params:
                 clone_spec.config.memoryMB = customization_params['memory_mb']
                 print(f"🔧 Setting memory to {customization_params['memory_mb']} MB")
             
-            # Add disk customization if specified
-            if 'disk_size_gb' in customization_params:
-                # Get the first disk and resize it
-                if hasattr(source_vm, 'config') and source_vm.config and hasattr(source_vm.config, 'hardware'):
-                    for device in source_vm.config.hardware.device:
-                        if isinstance(device, vim.vm.device.VirtualDisk):
-                            # Create a device change spec for the disk
-                            disk_spec = vim.vm.device.VirtualDeviceSpec()
-                            disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
-                            disk_spec.device = device
-                            
-                            # Set the new size in KB (convert GB to KB)
-                            new_size_kb = customization_params['disk_size_gb'] * 1024 * 1024
-                            disk_spec.device.capacityInKB = new_size_kb
-                            
-                            print(f"🔧 Setting disk size to {customization_params['disk_size_gb']} GB ({new_size_kb} KB)")
-                            
-                            # Add the device change to the config spec
-                            if not hasattr(clone_spec.config, 'deviceChange'):
-                                clone_spec.config.deviceChange = []
-                            clone_spec.config.deviceChange.append(disk_spec)
+            # Network adapter configuration - Configure the hardware network adapter
+            if any(k in customization_params for k in ['ip_address', 'netmask', 'gateway', 'network_name']):
+                print(f"🔧 Configuring network adapter hardware...")
+                
+                # Find the network
+                network_obj = None
+                if 'network_name' in customization_params:
+                    for network in resources.get('networks', []):
+                        if network.name == customization_params['network_name']:
+                            network_obj = network
                             break
+                
+                # If network not found, use the first available
+                if not network_obj and resources.get('networks'):
+                    network_obj = resources['networks'][0]
+                
+                if network_obj:
+                    # Configure each network adapter in the source VM
+                    for i, device in enumerate(source_vm.config.hardware.device):
+                        if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                            print(f"   • Configuring network adapter {i}: {device.__class__.__name__}")
+                            
+                            # Create network adapter spec
+                            nic_spec = vim.vm.device.VirtualDeviceSpec()
+                            nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                            nic_spec.device = device
+                            
+                            # Ensure the adapter is connected to the right network
+                            if hasattr(network_obj, 'portKeys'):
+                                # Distributed virtual switch
+                                print(f"     - Connecting to distributed port group: {network_obj.name}")
+                                nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                                nic_spec.device.backing.port = vim.dvs.PortConnection()
+                                nic_spec.device.backing.port.portgroupKey = network_obj.key
+                                nic_spec.device.backing.port.switchUuid = network_obj.config.distributedVirtualSwitch.uuid
+                            else:
+                                # Standard switch
+                                print(f"     - Connecting to standard switch: {network_obj.name}")
+                                nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                                nic_spec.device.backing.network = network_obj
+                                nic_spec.device.backing.deviceName = network_obj.name
+                            
+                            # Ensure the adapter is connected and starts connected
+                            nic_spec.device.connectable.connected = True
+                            nic_spec.device.connectable.startConnected = True
+                            nic_spec.device.connectable.allowGuestControl = True
+                            
+                            clone_spec.config.deviceChange.append(nic_spec)
+                            print(f"     - Network adapter {i} configured for {network_obj.name}")
+            
+            # Disk customization (if specified)
+            if 'disk_size_gb' in customization_params:
+                # Find the first disk and resize it
+                for device in source_vm.config.hardware.device:
+                    if isinstance(device, vim.vm.device.VirtualDisk):
+                        disk_spec = vim.vm.device.VirtualDeviceSpec()
+                        disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                        disk_spec.device = device
+                        disk_spec.device.capacityInKB = customization_params['disk_size_gb'] * 1024 * 1024
+                        clone_spec.config.deviceChange.append(disk_spec)
+                        print(f"🔧 Setting disk size to {customization_params['disk_size_gb']} GB")
+                        break
         
         # Add guest customization if network parameters are specified
         if customization_params and any(k in customization_params for k in ['hostname', 'ip_address', 'netmask', 'gateway']):
@@ -796,13 +839,67 @@ def create_vm_from_template_with_customization(source_vm, resources, customizati
                         print(f"     - Gateway: {nic.adapter.gateway}")
                     if hasattr(nic.adapter, 'dnsServerList'):
                         print(f"     - DNS Servers: {nic.adapter.dnsServerList}")
-            else:
-                print(f"⚠️ No network found, using DHCP for all adapters")
-                # Create a DHCP adapter mapping if no specific network found
-                guest_map = vim.vm.customization.AdapterMapping()
-                guest_map.adapter = vim.vm.customization.IPSettings()
-                guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
-                clone_spec.customization.nicSettingMap.append(guest_map)
+                
+                # Additional debugging - show the raw customization spec
+                print(f"\n🔍 RAW CUSTOMIZATION SPECIFICATION:")
+                print(f"   • Type: {type(clone_spec.customization)}")
+                print(f"   • Identity Type: {type(clone_spec.customization.identity)}")
+                print(f"   • Global IP Settings Type: {type(clone_spec.customization.globalIPSettings)}")
+                print(f"   • NIC Setting Map Type: {type(clone_spec.customization.nicSettingMap)}")
+                print(f"   • NIC Setting Map Length: {len(clone_spec.customization.nicSettingMap)}")
+                
+                # Check if we need to map to specific network adapters
+                print(f"\n🔍 SOURCE VM NETWORK ADAPTERS:")
+                if source_vm.config and source_vm.config.hardware and source_vm.config.hardware.device:
+                    for i, device in enumerate(source_vm.config.hardware.device):
+                        if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                            print(f"   • Adapter {i}: {device.__class__.__name__}")
+                            print(f"     - MAC: {device.macAddress}")
+                            print(f"     - Connected: {device.connectable.connected}")
+                            if hasattr(device, 'backing') and device.backing:
+                                if hasattr(device.backing, 'network'):
+                                    print(f"     - Network: {device.backing.network.name}")
+                                elif hasattr(device.backing, 'port'):
+                                    print(f"     - Port Group: {device.backing.port.portgroupKey}")
+                
+                # Try a different approach - create one adapter mapping per network adapter
+                print(f"\n🔧 TRYING ALTERNATIVE APPROACH: One adapter mapping per network adapter")
+                clone_spec.customization.nicSettingMap = []
+                
+                # Create one adapter mapping for each network adapter in the source VM
+                if source_vm.config and source_vm.config.hardware and source_vm.config.hardware.device:
+                    for i, device in enumerate(source_vm.config.hardware.device):
+                        if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                            print(f"   • Creating mapping for adapter {i}: {device.__class__.__name__}")
+                            
+                            guest_map = vim.vm.customization.AdapterMapping()
+                            guest_map.adapter = vim.vm.customization.IPSettings()
+                            
+                            # IP assignment logic - exactly like Ansible
+                            if 'ip_address' in customization_params and 'netmask' in customization_params:
+                                guest_map.adapter.ip = vim.vm.customization.FixedIp()
+                                guest_map.adapter.ip.ipAddress = str(customization_params['ip_address'])
+                                guest_map.adapter.subnetMask = str(customization_params['netmask'])
+                                print(f"     - Setting fixed IP: {customization_params['ip_address']}/{customization_params['netmask']}")
+                                
+                                # For Ubuntu/Linux, we need to be more explicit about static IP
+                                # Set DNS servers on the adapter level
+                                guest_map.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
+                                print(f"     - Setting DNS servers on adapter: 8.8.8.8, 8.8.4.4")
+                            else:
+                                # Use DHCP if no IP specified
+                                guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                                print(f"     - Using DHCP for IP assignment")
+                            
+                            # Gateway
+                            if 'gateway' in customization_params:
+                                guest_map.adapter.gateway = [customization_params['gateway']]
+                                print(f"     - Setting gateway to {customization_params['gateway']}")
+                            
+                            clone_spec.customization.nicSettingMap.append(guest_map)
+                            print(f"     - Added adapter mapping {i}")
+                
+                print(f"   • Final NIC Setting Map Count: {len(clone_spec.customization.nicSettingMap)}")
         
         print(f"\n🚀 Starting VM clone operation...")
         print(f"   • This may take several minutes depending on VM size")
@@ -1106,6 +1203,85 @@ def check_vm_network_config(si, vm_name):
     
     print(f"🔍 Network check complete for {vm_name}\n")
 
+def check_vmware_customization_events(si, vm_name, timeout_minutes=5):
+    """Check for VMware customization events and errors"""
+    print(f"\n🔍 Checking VMware customization events for VM: {vm_name}")
+    
+    # Find the VM
+    content = si.RetrieveContent()
+    container = content.viewManager.CreateContainerView(content.rootFolder, [vim.VirtualMachine], True)
+    vm = None
+    for v in container.view:
+        if v.name == vm_name:
+            vm = v
+            break
+    container.Destroy()
+    
+    if not vm:
+        print(f"❌ VM {vm_name} not found")
+        return
+    
+    print(f"✅ Found VM: {vm.name}")
+    
+    # Check for customization events
+    event_manager = content.eventManager
+    event_filter = vim.event.EventFilterSpec()
+    event_filter.entity = vim.event.EventFilterSpec.ByEntity()
+    event_filter.entity.entity = vm
+    event_filter.entity.recursion = vim.event.EventFilterSpec.RecursionOption.all
+    
+    # Look for customization-related events
+    customization_events = []
+    try:
+        events = event_manager.QueryEvents(event_filter)
+        for event in events:
+            if hasattr(event, 'fullFormattedMessage'):
+                message = event.fullFormattedMessage
+                if any(keyword in message.lower() for keyword in ['customization', 'guest', 'network', 'ip', 'dhcp']):
+                    customization_events.append({
+                        'time': event.createdTime,
+                        'message': message,
+                        'type': event.__class__.__name__
+                    })
+    except Exception as e:
+        print(f"⚠️ Error querying events: {str(e)}")
+    
+    if customization_events:
+        print(f"📋 Found {len(customization_events)} customization-related events:")
+        for event in customization_events[-5:]:  # Show last 5 events
+            print(f"   • {event['time']}: {event['type']} - {event['message']}")
+    else:
+        print(f"📋 No customization-related events found")
+    
+    # Check guest tools status and customization status
+    if vm.guest:
+        print(f"🔧 Guest Tools Status: {vm.guest.toolsRunningStatus}")
+        print(f"🔧 Guest Tools Version: {vm.guest.toolsVersion}")
+        print(f"🔧 Guest OS: {vm.guest.guestFamily}")
+        print(f"🔧 Guest ID: {vm.guest.guestId}")
+        
+        # Check for any guest tools errors
+        if hasattr(vm.guest, 'toolsStatus'):
+            print(f"🔧 Tools Status: {vm.guest.toolsStatus}")
+        
+        # Check for customization status
+        if hasattr(vm.guest, 'customizationStatus'):
+            print(f"🔧 Customization Status: {vm.guest.customizationStatus}")
+    
+    # Check VM configuration for guest OS
+    if vm.config:
+        print(f"🔧 VM Guest ID: {vm.config.guestId}")
+        print(f"🔧 VM Version: {vm.config.version}")
+        
+        # Check for any advanced settings that might affect customization
+        if hasattr(vm.config, 'extraConfig'):
+            print(f"🔧 Extra Config Options:")
+            for option in vm.config.extraConfig:
+                if 'customization' in option.key.lower() or 'guest' in option.key.lower():
+                    print(f"   • {option.key}: {option.value}")
+    
+    print(f"🔍 Customization event check complete for {vm_name}\n")
+
 def clone_vm_with_customization(si, source_vm, clone_name, customization_params=None):
     """Clone a VM with full customization using Ansible's approach"""
     print(f"🔧 Cloning {source_vm.name} to {clone_name} with customization...")
@@ -1154,7 +1330,7 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
             print(f"🔧 Using host: {resources['hosts'][0].name}")
         
         # Configure hardware customization
-        if any(k in customization_params for k in ['cpu_count', 'memory_mb', 'disk_size_gb']):
+        if any(k in customization_params for k in ['cpu_count', 'memory_mb', 'disk_size_gb', 'ip_address', 'netmask', 'gateway']):
             clone_spec.config = vim.vm.ConfigSpec()
             clone_spec.config.deviceChange = []
             
@@ -1167,6 +1343,56 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
             if 'memory_mb' in customization_params:
                 clone_spec.config.memoryMB = customization_params['memory_mb']
                 print(f"🔧 Setting memory to {customization_params['memory_mb']} MB")
+            
+            # Network adapter configuration - Configure the hardware network adapter
+            if any(k in customization_params for k in ['ip_address', 'netmask', 'gateway', 'network_name']):
+                print(f"🔧 Configuring network adapter hardware...")
+                
+                # Find the network
+                network_obj = None
+                if 'network_name' in customization_params:
+                    for network in resources.get('networks', []):
+                        if network.name == customization_params['network_name']:
+                            network_obj = network
+                            break
+                
+                # If network not found, use the first available
+                if not network_obj and resources.get('networks'):
+                    network_obj = resources['networks'][0]
+                
+                if network_obj:
+                    # Configure each network adapter in the source VM
+                    for i, device in enumerate(source_vm.config.hardware.device):
+                        if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                            print(f"   • Configuring network adapter {i}: {device.__class__.__name__}")
+                            
+                            # Create network adapter spec
+                            nic_spec = vim.vm.device.VirtualDeviceSpec()
+                            nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                            nic_spec.device = device
+                            
+                            # Ensure the adapter is connected to the right network
+                            if hasattr(network_obj, 'portKeys'):
+                                # Distributed virtual switch
+                                print(f"     - Connecting to distributed port group: {network_obj.name}")
+                                nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                                nic_spec.device.backing.port = vim.dvs.PortConnection()
+                                nic_spec.device.backing.port.portgroupKey = network_obj.key
+                                nic_spec.device.backing.port.switchUuid = network_obj.config.distributedVirtualSwitch.uuid
+                            else:
+                                # Standard switch
+                                print(f"     - Connecting to standard switch: {network_obj.name}")
+                                nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                                nic_spec.device.backing.network = network_obj
+                                nic_spec.device.backing.deviceName = network_obj.name
+                            
+                            # Ensure the adapter is connected and starts connected
+                            nic_spec.device.connectable.connected = True
+                            nic_spec.device.connectable.startConnected = True
+                            nic_spec.device.connectable.allowGuestControl = True
+                            
+                            clone_spec.config.deviceChange.append(nic_spec)
+                            print(f"     - Network adapter {i} configured for {network_obj.name}")
             
             # Disk customization (if specified)
             if 'disk_size_gb' in customization_params:
@@ -1263,13 +1489,67 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
                         print(f"     - Gateway: {nic.adapter.gateway}")
                     if hasattr(nic.adapter, 'dnsServerList'):
                         print(f"     - DNS Servers: {nic.adapter.dnsServerList}")
-            else:
-                print(f"⚠️ No network found, using DHCP for all adapters")
-                # Create a DHCP adapter mapping if no specific network found
-                guest_map = vim.vm.customization.AdapterMapping()
-                guest_map.adapter = vim.vm.customization.IPSettings()
-                guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
-                clone_spec.customization.nicSettingMap.append(guest_map)
+                
+                # Additional debugging - show the raw customization spec
+                print(f"\n🔍 RAW CUSTOMIZATION SPECIFICATION:")
+                print(f"   • Type: {type(clone_spec.customization)}")
+                print(f"   • Identity Type: {type(clone_spec.customization.identity)}")
+                print(f"   • Global IP Settings Type: {type(clone_spec.customization.globalIPSettings)}")
+                print(f"   • NIC Setting Map Type: {type(clone_spec.customization.nicSettingMap)}")
+                print(f"   • NIC Setting Map Length: {len(clone_spec.customization.nicSettingMap)}")
+                
+                # Check if we need to map to specific network adapters
+                print(f"\n🔍 SOURCE VM NETWORK ADAPTERS:")
+                if source_vm.config and source_vm.config.hardware and source_vm.config.hardware.device:
+                    for i, device in enumerate(source_vm.config.hardware.device):
+                        if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                            print(f"   • Adapter {i}: {device.__class__.__name__}")
+                            print(f"     - MAC: {device.macAddress}")
+                            print(f"     - Connected: {device.connectable.connected}")
+                            if hasattr(device, 'backing') and device.backing:
+                                if hasattr(device.backing, 'network'):
+                                    print(f"     - Network: {device.backing.network.name}")
+                                elif hasattr(device.backing, 'port'):
+                                    print(f"     - Port Group: {device.backing.port.portgroupKey}")
+                
+                # Try a different approach - create one adapter mapping per network adapter
+                print(f"\n🔧 TRYING ALTERNATIVE APPROACH: One adapter mapping per network adapter")
+                clone_spec.customization.nicSettingMap = []
+                
+                # Create one adapter mapping for each network adapter in the source VM
+                if source_vm.config and source_vm.config.hardware and source_vm.config.hardware.device:
+                    for i, device in enumerate(source_vm.config.hardware.device):
+                        if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                            print(f"   • Creating mapping for adapter {i}: {device.__class__.__name__}")
+                            
+                            guest_map = vim.vm.customization.AdapterMapping()
+                            guest_map.adapter = vim.vm.customization.IPSettings()
+                            
+                            # IP assignment logic - exactly like Ansible
+                            if 'ip_address' in customization_params and 'netmask' in customization_params:
+                                guest_map.adapter.ip = vim.vm.customization.FixedIp()
+                                guest_map.adapter.ip.ipAddress = str(customization_params['ip_address'])
+                                guest_map.adapter.subnetMask = str(customization_params['netmask'])
+                                print(f"     - Setting fixed IP: {customization_params['ip_address']}/{customization_params['netmask']}")
+                                
+                                # For Ubuntu/Linux, we need to be more explicit about static IP
+                                # Set DNS servers on the adapter level
+                                guest_map.adapter.dnsServerList = ['8.8.8.8', '8.8.4.4']
+                                print(f"     - Setting DNS servers on adapter: 8.8.8.8, 8.8.4.4")
+                            else:
+                                # Use DHCP if no IP specified
+                                guest_map.adapter.ip = vim.vm.customization.DhcpIpGenerator()
+                                print(f"     - Using DHCP for IP assignment")
+                            
+                            # Gateway
+                            if 'gateway' in customization_params:
+                                guest_map.adapter.gateway = [customization_params['gateway']]
+                                print(f"     - Setting gateway to {customization_params['gateway']}")
+                            
+                            clone_spec.customization.nicSettingMap.append(guest_map)
+                            print(f"     - Added adapter mapping {i}")
+                
+                print(f"   • Final NIC Setting Map Count: {len(clone_spec.customization.nicSettingMap)}")
         
         # Power off the VM before cloning
         if source_vm.runtime.powerState == 'poweredOn':
@@ -1307,6 +1587,9 @@ def clone_vm_with_customization(si, source_vm, clone_name, customization_params=
                 
                 # Check network configuration
                 check_vm_network_config(si, cloned_vm.name)
+                
+                # Check VMware customization events
+                check_vmware_customization_events(si, cloned_vm.name)
                 
                 # Show expected vs actual netplan configuration
                 if 'ip_address' in customization_params and 'netmask' in customization_params and 'gateway' in customization_params:
@@ -1395,6 +1678,9 @@ def test_clone_vm_with_customization():
                 
                 # Check network configuration
                 check_vm_network_config(si, cloned_vm.name)
+                
+                # Check VMware customization events
+                check_vmware_customization_events(si, cloned_vm.name)
                 
                 # Show expected vs actual netplan configuration
                 if 'ip_address' in customization_params and 'netmask' in customization_params and 'gateway' in customization_params:
