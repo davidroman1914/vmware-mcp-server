@@ -48,6 +48,11 @@ class VMwareMCPServer:
                 context = ssl.create_default_context()
             
             print("[DEBUG] Connecting to vCenter...", file=sys.stderr)
+            
+            # Add timeout to prevent hanging
+            import socket
+            socket.setdefaulttimeout(30)  # 30 second timeout
+            
             self.service_instance = SmartConnect(
                 host=host,
                 user=user,
