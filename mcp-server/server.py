@@ -96,11 +96,14 @@ class VMwareMCPServer:
     
     def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle MCP initialize request."""
+        print("[DEBUG] Starting initialize handler...", file=sys.stderr)
         # Get the tools list
+        print("[DEBUG] Getting tools list...", file=sys.stderr)
         tools_response = self.handle_tools_list({"id": params.get("id")})
+        print("[DEBUG] Got tools list, building response...", file=sys.stderr)
         tools = tools_response["result"]["tools"]
         
-        return {
+        response = {
             "jsonrpc": "2.0",
             "id": params.get("id"),
             "result": {
@@ -114,9 +117,12 @@ class VMwareMCPServer:
                 }
             }
         }
+        print("[DEBUG] Initialize handler completed", file=sys.stderr)
+        return response
     
     def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle MCP tools/list request."""
+        print("[DEBUG] Starting tools/list handler...", file=sys.stderr)
         tools = [
             {
                 "name": "list_vms",
@@ -214,13 +220,15 @@ class VMwareMCPServer:
             }
         ]
         
-        return {
+        response = {
             "jsonrpc": "2.0",
             "id": params.get("id"),
             "result": {
                 "tools": tools
             }
         }
+        print("[DEBUG] Tools/list handler completed", file=sys.stderr)
+        return response
     
     def handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle MCP tools/call request."""
@@ -357,29 +365,39 @@ class VMwareMCPServer:
     
     def run(self):
         """Run the MCP server using stdio protocol."""
+        print("[DEBUG] MCP Server starting, waiting for messages...", file=sys.stderr)
         while True:
             try:
                 # Read request from stdin
+                print("[DEBUG] Waiting for input from stdin...", file=sys.stderr)
                 line = sys.stdin.readline()
                 if not line:
+                    print("[DEBUG] No input received, exiting...", file=sys.stderr)
                     break
                 
+                print(f"[DEBUG] Received input: {line.strip()}", file=sys.stderr)
                 request = json.loads(line)
                 method = request.get("method")
                 params = request.get("params", {})
                 request_id = request.get("id")
+                
+                print(f"[DEBUG] Processing method: {method}, id: {request_id}", file=sys.stderr)
                 
                 # Add the request ID to params for handlers
                 params["id"] = request_id
                 
                 # Handle different MCP methods
                 if method == "initialize":
+                    print("[DEBUG] Handling initialize request...", file=sys.stderr)
                     response = self.handle_initialize(params)
                 elif method == "tools/list":
+                    print("[DEBUG] Handling tools/list request...", file=sys.stderr)
                     response = self.handle_tools_list(params)
                 elif method == "tools/call":
+                    print("[DEBUG] Handling tools/call request...", file=sys.stderr)
                     response = self.handle_tools_call(params)
                 else:
+                    print(f"[DEBUG] Unknown method: {method}", file=sys.stderr)
                     response = {
                         "jsonrpc": "2.0",
                         "id": request_id,
@@ -389,15 +407,19 @@ class VMwareMCPServer:
                         }
                     }
                 
+                print(f"[DEBUG] Sending response: {json.dumps(response)}", file=sys.stderr)
                 # Send response to stdout
                 print(json.dumps(response), end='')
                 sys.stdout.flush()
                 
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                print(f"[DEBUG] JSON decode error: {e}", file=sys.stderr)
                 continue
             except KeyboardInterrupt:
+                print("[DEBUG] Keyboard interrupt received", file=sys.stderr)
                 break
             except Exception as e:
+                print(f"[DEBUG] Exception in main loop: {e}", file=sys.stderr)
                 error_response = {
                     "jsonrpc": "2.0",
                     "id": request.get("id") if 'request' in locals() else None,
@@ -410,6 +432,7 @@ class VMwareMCPServer:
                 sys.stdout.flush()
         
         # Cleanup
+        print("[DEBUG] Cleaning up and disconnecting...", file=sys.stderr)
         self.disconnect_from_vcenter()
 
 if __name__ == "__main__":
