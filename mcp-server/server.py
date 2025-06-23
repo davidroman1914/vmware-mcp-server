@@ -66,13 +66,116 @@ class VMwareMCPServer:
     
     def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle MCP initialize request."""
+        # Define the tools that this server provides
+        tools = [
+            {
+                "name": "list_vms",
+                "description": "List all VMs in vCenter with detailed information",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False
+                }
+            },
+            {
+                "name": "power_on_vm",
+                "description": "Power on a VM by name",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "vm_name": {
+                            "type": "string",
+                            "description": "Name of the VM to power on"
+                        }
+                    },
+                    "required": ["vm_name"],
+                    "additionalProperties": False
+                }
+            },
+            {
+                "name": "power_off_vm",
+                "description": "Power off a VM by name",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "vm_name": {
+                            "type": "string",
+                            "description": "Name of the VM to power off"
+                        }
+                    },
+                    "required": ["vm_name"],
+                    "additionalProperties": False
+                }
+            },
+            {
+                "name": "create_vm_from_template",
+                "description": "Create a new VM from a template with customization",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "template_name": {
+                            "type": "string",
+                            "description": "Name of the template VM to clone from"
+                        },
+                        "vm_name": {
+                            "type": "string",
+                            "description": "Name for the new VM"
+                        },
+                        "hostname": {
+                            "type": "string",
+                            "description": "Hostname for the new VM"
+                        },
+                        "ip_address": {
+                            "type": "string",
+                            "description": "Static IP address"
+                        },
+                        "netmask": {
+                            "type": "string",
+                            "description": "Subnet mask"
+                        },
+                        "gateway": {
+                            "type": "string",
+                            "description": "Gateway IP address"
+                        },
+                        "network_name": {
+                            "type": "string",
+                            "description": "Network/port group name"
+                        },
+                        "cpu_count": {
+                            "type": "integer",
+                            "description": "Number of CPUs"
+                        },
+                        "memory_mb": {
+                            "type": "integer",
+                            "description": "Memory in MB"
+                        },
+                        "disk_size_gb": {
+                            "type": "integer",
+                            "description": "Disk size in GB"
+                        },
+                        "datastore_name": {
+                            "type": "string",
+                            "description": "Datastore name (optional)"
+                        }
+                    },
+                    "required": ["template_name", "vm_name", "hostname", "ip_address", "netmask", "gateway", "network_name"],
+                    "additionalProperties": False
+                }
+            }
+        ]
+        
         return {
             "jsonrpc": "2.0",
             "id": params.get("id"),
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {}
+                    "tools": {
+                        "list_vms": tools[0],
+                        "power_on_vm": tools[1],
+                        "power_off_vm": tools[2],
+                        "create_vm_from_template": tools[3]
+                    }
                 },
                 "serverInfo": {
                     "name": "vmware-vcenter-mcp-server",
