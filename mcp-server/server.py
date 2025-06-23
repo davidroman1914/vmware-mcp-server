@@ -170,12 +170,7 @@ class VMwareMCPServer:
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {
-                        "list_vms": tools[0],
-                        "power_on_vm": tools[1],
-                        "power_off_vm": tools[2],
-                        "create_vm_from_template": tools[3]
-                    }
+                    "tools": tools
                 },
                 "serverInfo": {
                     "name": "vmware-vcenter-mcp-server",
