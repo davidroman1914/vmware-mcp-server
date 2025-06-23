@@ -413,6 +413,109 @@ def create_vm_from_template(template_name: str, new_vm_name: str, datastore_name
         return f"Error: {e}"
 
 @mcp.tool()
+def create_vm_simple(template_name: str, new_vm_name: str) -> str:
+    """Create a new VM from a template using default settings (simpler)."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        
+        # Find template
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        template = None
+        for vm in container.view:
+            if vm.config.template and vm.name == template_name:
+                template = vm
+                break
+        
+        if not template:
+            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
+        
+        # Create VM with default settings (same folder and datastore as template)
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=vim.vm.ConfigSpec())
+        
+        # Wait for task to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            return f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
+        else:
+            return f"❌ Failed to create VM: {task.info.error.msg}"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def list_datastores() -> str:
+    """List all available datastores."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.Datastore], True
+        )
+        
+        datastores = []
+        for ds in container.view:
+            free_space_gb = round(ds.summary.freeSpace / (1024**3), 1)
+            total_space_gb = round(ds.summary.capacity / (1024**3), 1)
+            datastores.append({
+                'name': ds.name,
+                'free_space_gb': free_space_gb,
+                'total_space_gb': total_space_gb,
+                'type': ds.summary.type
+            })
+        
+        if datastores:
+            result = f"Found {len(datastores)} datastores:\n"
+            for ds in datastores:
+                result += f"- {ds['name']} ({ds['type']}, {ds['free_space_gb']} GB free of {ds['total_space_gb']} GB)\n"
+            return result
+        else:
+            return "No datastores found"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def list_clusters() -> str:
+    """List all available clusters."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.ClusterComputeResource], True
+        )
+        
+        clusters = []
+        for cluster in container.view:
+            clusters.append({
+                'name': cluster.name,
+                'host_count': len(cluster.host),
+                'resource_pool': cluster.resourcePool.name if cluster.resourcePool else 'N/A'
+            })
+        
+        if clusters:
+            result = f"Found {len(clusters)} clusters:\n"
+            for cluster in clusters:
+                result += f"- {cluster['name']} ({cluster['host_count']} hosts, resource pool: {cluster['resource_pool']})\n"
+            return result
+        else:
+            return "No clusters found"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
 def debug_connection() -> str:
     """Debug connection status."""
     # Test REST API
