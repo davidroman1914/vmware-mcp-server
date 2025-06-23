@@ -836,11 +836,18 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
         # Create relocation spec (required for location)
         relospec = vim.vm.RelocateSpec()
         # Use same datastore as template
-        if template.datastore:
+        if template.datastore and len(template.datastore) > 0:
             relospec.datastore = template.datastore[0]
-        # Use same resource pool as template
-        if template.resourcePool:
-            relospec.pool = template.resourcePool
+        
+        # Only set resource pool if template has one and it's valid
+        if hasattr(template, 'resourcePool') and template.resourcePool:
+            try:
+                # Test if the resource pool is accessible
+                if template.resourcePool.name:
+                    relospec.pool = template.resourcePool
+            except:
+                # If resource pool is not accessible, don't set it
+                pass
         
         clone_spec.location = relospec
         clone_spec.config = vim.vm.ConfigSpec()
@@ -929,6 +936,164 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
         
         if task.info.state == vim.TaskInfo.State.success:
             result = f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
+            if memory_gb:
+                result += f"\n- Memory: {memory_gb} GB"
+            if cpu_count:
+                result += f"\n- CPU: {cpu_count} cores"
+            if disk_gb:
+                result += f"\n- Disk: {disk_gb} GB"
+            if network_name:
+                result += f"\n- Network: {network_name}"
+            result += f"\n\n💡 Note: IP address will be assigned via DHCP. You can configure static IP after powering on the VM."
+            return result
+        else:
+            return f"❌ Failed to create VM: {task.info.error.msg}"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def create_vm_with_datastore(template_name: str, new_vm_name: str, datastore_name: str, memory_gb: int = None, cpu_count: int = None, disk_gb: int = None, network_name: str = None) -> str:
+    """Create a new VM from template with custom memory, CPU, disk size, network, and specific datastore."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        
+        # Find template
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        template = None
+        for vm in container.view:
+            if vm.config.template and vm.name == template_name:
+                template = vm
+                break
+        
+        if not template:
+            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
+        
+        # Find specified datastore
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.Datastore], True
+        )
+        
+        datastore = None
+        for ds in container.view:
+            if ds.name == datastore_name:
+                datastore = ds
+                break
+        
+        if not datastore:
+            return f"Datastore '{datastore_name}' not found. Use list_datastores() to see available datastores."
+        
+        # Create clone spec for customization
+        clone_spec = vim.vm.CloneSpec()
+        
+        # Create relocation spec (required for location)
+        relospec = vim.vm.RelocateSpec()
+        relospec.datastore = datastore
+        
+        # Only set resource pool if template has one and it's valid
+        if hasattr(template, 'resourcePool') and template.resourcePool:
+            try:
+                # Test if the resource pool is accessible
+                if template.resourcePool.name:
+                    relospec.pool = template.resourcePool
+            except:
+                # If resource pool is not accessible, don't set it
+                pass
+        
+        clone_spec.location = relospec
+        clone_spec.config = vim.vm.ConfigSpec()
+        
+        # Customize memory if specified
+        if memory_gb:
+            clone_spec.config.memoryMB = memory_gb * 1024  # Convert GB to MB
+            clone_spec.config.memoryHotAddEnabled = True
+        
+        # Customize CPU if specified
+        if cpu_count:
+            clone_spec.config.numCPUs = cpu_count
+            clone_spec.config.numCoresPerSocket = cpu_count
+            clone_spec.config.cpuHotAddEnabled = True
+        
+        # Customize disk size if specified
+        if disk_gb:
+            # Find the first virtual disk in the template
+            template_disk = None
+            for device in template.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualDisk):
+                    template_disk = device
+                    break
+            
+            if template_disk:
+                # Create disk spec
+                disk_spec = vim.vm.device.VirtualDeviceSpec()
+                disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                disk_spec.device = vim.vm.device.VirtualDisk()
+                disk_spec.device.key = template_disk.key
+                disk_spec.device.capacityInKB = disk_gb * 1024 * 1024  # Convert GB to KB
+                disk_spec.device.backing = template_disk.backing
+                
+                clone_spec.config.deviceChange = [disk_spec]
+        
+        # Customize network if specified
+        if network_name:
+            # Find network
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
+            )
+            
+            network = None
+            for net in container.view:
+                if net.name == network_name:
+                    network = net
+                    break
+            
+            if network:
+                # Create network adapter spec
+                nic_spec = vim.vm.device.VirtualDeviceSpec()
+                nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
+                
+                # Create network adapter
+                nic_spec.device = vim.vm.device.VirtualVmxnet3()
+                nic_spec.device.key = -1
+                nic_spec.device.deviceInfo = vim.Description()
+                nic_spec.device.deviceInfo.label = "Network adapter 1"
+                nic_spec.device.deviceInfo.summary = network_name
+                
+                # Connect to network
+                if isinstance(network, vim.dvs.DistributedVirtualPortgroup):
+                    nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                    nic_spec.device.backing.port = vim.dvs.PortConnection()
+                    nic_spec.device.backing.port.portgroupKey = network.key
+                    nic_spec.device.backing.port.switchUuid = network.config.distributedVirtualSwitch.uuid
+                else:
+                    nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                    nic_spec.device.backing.network = network
+                    nic_spec.device.backing.deviceName = network_name
+                
+                # Add network spec to device changes
+                if clone_spec.config.deviceChange:
+                    clone_spec.config.deviceChange.append(nic_spec)
+                else:
+                    clone_spec.config.deviceChange = [nic_spec]
+            else:
+                return f"Network '{network_name}' not found. Use list_networks() to see available networks."
+        
+        # Clone the VM
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
+        
+        # Wait for task to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            result = f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
+            result += f"\n- Datastore: {datastore_name}"
             if memory_gb:
                 result += f"\n- Memory: {memory_gb} GB"
             if cpu_count:
