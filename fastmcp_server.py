@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FastMCP VMware Server - Fast REST API approach
+FastMCP VMware Server - Clean and Working Version
 """
 
 import sys
@@ -204,31 +204,37 @@ def get_vm_details(vm_name: str) -> str:
         else:
             details['datastores'] = 'No datastores found'
         
-        # Get resource pool
+        # Get resource pool info
         if vm.resourcePool:
             details['resource_pool'] = vm.resourcePool.name
         else:
-            details['resource_pool'] = 'N/A'
+            details['resource_pool'] = 'No resource pool found'
         
         # Get folder location
         if vm.parent:
             details['folder'] = vm.parent.name
         else:
-            details['folder'] = 'Root'
+            details['folder'] = 'No folder found'
         
-        # Get guest OS info
+        # Get VMware Tools status
         if vm.guest:
-            details['guest_os'] = vm.guest.guestFullName if vm.guest.guestFullName else 'N/A'
-            details['tools_status'] = vm.guest.toolsStatus if vm.guest.toolsStatus else 'N/A'
+            details['vmware_tools'] = vm.guest.toolsRunningStatus
         else:
-            details['guest_os'] = 'N/A'
-            details['tools_status'] = 'N/A'
+            details['vmware_tools'] = 'Unknown'
         
-        result = f"VM Details for '{vm.name}':\n"
-        for key, value in details.items():
-            # Format the key nicely
-            formatted_key = key.replace('_', ' ').title()
-            result += f"- {formatted_key}: {value}\n"
+        # Format the result
+        result = f"VM Details for '{vm_name}':\n"
+        result += f"- Power State: {details['power_state']}\n"
+        result += f"- CPU Count: {details['cpu_count']}\n"
+        result += f"- Memory: {details['memory_gb']} GB ({details['memory_mb']} MB)\n"
+        result += f"- Guest OS: {details['guest_id']}\n"
+        result += f"- VMware Tools: {details['vmware_tools']}\n"
+        result += f"- IP Addresses: {details['ip_addresses']}\n"
+        result += f"- Network Adapters: {details['network_adapters']}\n"
+        result += f"- Datastores: {details['datastores']}\n"
+        result += f"- Resource Pool: {details['resource_pool']}\n"
+        result += f"- Folder: {details['folder']}\n"
+        result += f"- Template: {details['template']}\n"
         
         return result
         
@@ -237,7 +243,7 @@ def get_vm_details(vm_name: str) -> str:
 
 @mcp.tool()
 def power_on_vm(vm_name: str) -> str:
-    """Power on a VM using pyvmomi."""
+    """Power on a VM by name."""
     if not connect_to_vcenter():
         return "Error: Could not connect to vCenter"
     
@@ -260,21 +266,20 @@ def power_on_vm(vm_name: str) -> str:
             return f"VM '{vm_name}' is already powered on"
         
         task = vm.PowerOn()
-        # Wait for task to complete
         while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
             pass
         
         if task.info.state == vim.TaskInfo.State.success:
-            return f"Successfully powered on VM '{vm_name}'"
+            return f"✅ Successfully powered on VM '{vm_name}'"
         else:
-            return f"Failed to power on VM '{vm_name}': {task.info.error.msg}"
+            return f"❌ Failed to power on VM '{vm_name}': {task.info.error.msg}"
             
     except Exception as e:
         return f"Error: {e}"
 
 @mcp.tool()
 def power_off_vm(vm_name: str) -> str:
-    """Power off a VM using pyvmomi."""
+    """Power off a VM by name."""
     if not connect_to_vcenter():
         return "Error: Could not connect to vCenter"
     
@@ -297,21 +302,20 @@ def power_off_vm(vm_name: str) -> str:
             return f"VM '{vm_name}' is already powered off"
         
         task = vm.PowerOff()
-        # Wait for task to complete
         while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
             pass
         
         if task.info.state == vim.TaskInfo.State.success:
-            return f"Successfully powered off VM '{vm_name}'"
+            return f"✅ Successfully powered off VM '{vm_name}'"
         else:
-            return f"Failed to power off VM '{vm_name}': {task.info.error.msg}"
+            return f"❌ Failed to power off VM '{vm_name}': {task.info.error.msg}"
             
     except Exception as e:
         return f"Error: {e}"
 
 @mcp.tool()
 def list_templates() -> str:
-    """List all VM templates using pyvmomi."""
+    """List all available templates."""
     if not connect_to_vcenter():
         return "Error: Could not connect to vCenter"
     
@@ -324,129 +328,15 @@ def list_templates() -> str:
         templates = []
         for vm in container.view:
             if vm.config.template:
-                templates.append({
-                    'name': vm.name,
-                    'guest_id': vm.config.guestId,
-                    'memory_mb': vm.config.hardware.memoryMB,
-                    'cpu_count': vm.config.hardware.numCPU
-                })
+                templates.append(vm.name)
         
         if templates:
             result = f"Found {len(templates)} templates:\n"
             for template in templates:
-                memory_gb = round(template['memory_mb'] / 1024, 1) if template['memory_mb'] else 0
-                result += f"- {template['name']} ({template['guest_id']}, {template['cpu_count']} CPU, {memory_gb} GB RAM)\n"
+                result += f"- {template}\n"
             return result
         else:
             return "No templates found"
-            
-    except Exception as e:
-        return f"Error: {e}"
-
-@mcp.tool()
-def create_vm_from_template(template_name: str, new_vm_name: str, datastore_name: str = None, cluster_name: str = None) -> str:
-    """Create a new VM from a template using pyvmomi."""
-    if not connect_to_vcenter():
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        content = service_instance.RetrieveContent()
-        
-        # Find template
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
-        )
-        
-        template = None
-        for vm in container.view:
-            if vm.config.template and vm.name == template_name:
-                template = vm
-                break
-        
-        if not template:
-            return f"Template '{template_name}' not found"
-        
-        # Find datastore
-        datastore = None
-        if datastore_name:
-            container = content.viewManager.CreateContainerView(
-                content.rootFolder, [vim.Datastore], True
-            )
-            for ds in container.view:
-                if ds.name == datastore_name:
-                    datastore = ds
-                    break
-        
-        # Find cluster/resource pool
-        resource_pool = None
-        if cluster_name:
-            container = content.viewManager.CreateContainerView(
-                content.rootFolder, [vim.ClusterComputeResource], True
-            )
-            for cluster in container.view:
-                if cluster.name == cluster_name:
-                    resource_pool = cluster.resourcePool
-                    break
-        
-        # Create VM
-        relospec = vim.vm.RelocateSpec()
-        if datastore:
-            relospec.datastore = datastore
-        if resource_pool:
-            relospec.pool = resource_pool
-        
-        configspec = vim.vm.ConfigSpec()
-        configspec.location = relospec
-        
-        task = template.Clone(folder=template.parent, name=new_vm_name, spec=configspec)
-        
-        # Wait for task to complete
-        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-            pass
-        
-        if task.info.state == vim.TaskInfo.State.success:
-            return f"Successfully created VM '{new_vm_name}' from template '{template_name}'"
-        else:
-            return f"Failed to create VM: {task.info.error.msg}"
-            
-    except Exception as e:
-        return f"Error: {e}"
-
-@mcp.tool()
-def create_vm_simple(template_name: str, new_vm_name: str) -> str:
-    """Create a new VM from a template using default settings (simpler)."""
-    if not connect_to_vcenter():
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        content = service_instance.RetrieveContent()
-        
-        # Find template
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
-        )
-        
-        template = None
-        for vm in container.view:
-            if vm.config.template and vm.name == template_name:
-                template = vm
-                break
-        
-        if not template:
-            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
-        
-        # Create VM with default settings (same folder and datastore as template)
-        clone_spec = vim.vm.CloneSpec()
-        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
-        
-        # Wait for task to complete
-        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-            pass
-        
-        if task.info.state == vim.TaskInfo.State.success:
-            return f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
-        else:
-            return f"❌ Failed to create VM: {task.info.error.msg}"
             
     except Exception as e:
         return f"Error: {e}"
@@ -465,306 +355,20 @@ def list_datastores() -> str:
         
         datastores = []
         for ds in container.view:
-            free_space_gb = round(ds.summary.freeSpace / (1024**3), 1)
-            total_space_gb = round(ds.summary.capacity / (1024**3), 1)
             datastores.append({
                 'name': ds.name,
-                'free_space_gb': free_space_gb,
-                'total_space_gb': total_space_gb,
-                'type': ds.summary.type
+                'type': ds.summary.type,
+                'capacity_gb': round(ds.summary.capacity / (1024**3), 1),
+                'free_gb': round(ds.summary.freeSpace / (1024**3), 1)
             })
         
         if datastores:
             result = f"Found {len(datastores)} datastores:\n"
             for ds in datastores:
-                result += f"- {ds['name']} ({ds['type']}, {ds['free_space_gb']} GB free of {ds['total_space_gb']} GB)\n"
+                result += f"- {ds['name']} ({ds['type']}, {ds['free_gb']}GB free of {ds['capacity_gb']}GB)\n"
             return result
         else:
             return "No datastores found"
-            
-    except Exception as e:
-        return f"Error: {e}"
-
-@mcp.tool()
-def list_clusters() -> str:
-    """List all available clusters."""
-    if not connect_to_vcenter():
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        content = service_instance.RetrieveContent()
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.ClusterComputeResource], True
-        )
-        
-        clusters = []
-        for cluster in container.view:
-            clusters.append({
-                'name': cluster.name,
-                'host_count': len(cluster.host),
-                'resource_pool': cluster.resourcePool.name if cluster.resourcePool else 'N/A'
-            })
-        
-        if clusters:
-            result = f"Found {len(clusters)} clusters:\n"
-            for cluster in clusters:
-                result += f"- {cluster['name']} ({cluster['host_count']} hosts, resource pool: {cluster['resource_pool']})\n"
-            return result
-        else:
-            return "No clusters found"
-            
-    except Exception as e:
-        return f"Error: {e}"
-
-@mcp.tool()
-def debug_connection() -> str:
-    """Debug connection status."""
-    # Test REST API
-    session_id = get_vcenter_session()
-    rest_status = "✓ REST API: Connected" if session_id else "✗ REST API: Failed"
-    
-    # Test pyvmomi
-    pyvmomi_status = "✓ pyvmomi: Connected" if connect_to_vcenter() else "✗ pyvmomi: Failed"
-    
-    return f"Connection Status:\n{rest_status}\n{pyvmomi_status}"
-
-@mcp.tool()
-def get_vm_ip(vm_name: str) -> str:
-    """Get VM IP addresses using fast REST API."""
-    session_id = get_vcenter_session()
-    if not session_id:
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        host = os.getenv('VCENTER_HOST')
-        headers = {'vmware-api-session-id': session_id}
-        
-        # Get VM by name
-        vm_url = f"https://{host}/rest/vcenter/vm"
-        response = requests.get(vm_url, headers=headers, verify=False, timeout=10)
-        
-        if response.status_code == 200:
-            vms = response.json()['value']
-            vm = next((v for v in vms if v['name'] == vm_name), None)
-            
-            if not vm:
-                return f"VM '{vm_name}' not found"
-            
-            vm_id = vm['vm']
-            
-            # Get VM guest info for IP addresses
-            guest_url = f"https://{host}/rest/vcenter/vm/{vm_id}/guest"
-            guest_response = requests.get(guest_url, headers=headers, verify=False, timeout=10)
-            
-            if guest_response.status_code == 200:
-                guest_info = guest_response.json()['value']
-                
-                result = f"IP Addresses for VM '{vm_name}':\n"
-                
-                if guest_info.get('net'):
-                    for nic in guest_info['net']:
-                        if nic.get('ipConfig') and nic['ipConfig'].get('ipAddress'):
-                            for ip in nic['ipConfig']['ipAddress']:
-                                ip_addr = ip.get('ipAddress', 'Unknown')
-                                prefix = ip.get('prefixLength', 'Unknown')
-                                state = ip.get('state', 'Unknown')
-                                
-                                ip_info = f"- {ip_addr}/{prefix}"
-                                if state == 'preferred':
-                                    ip_info += " (primary)"
-                                result += ip_info + "\n"
-                else:
-                    result += "- No IP addresses found (VM may be powered off or tools not running)\n"
-                
-                return result
-            else:
-                return f"Error: Failed to get guest info (HTTP {guest_response.status_code})"
-        else:
-            return f"Error: Failed to get VMs (HTTP {response.status_code})"
-            
-    except Exception as e:
-        return f"Error: {e}"
-
-@mcp.tool()
-def create_vm_advanced(template_name: str, new_vm_name: str, memory_gb: int = None, cpu_count: int = None, ip_address: str = None, netmask: str = None, gateway: str = None, dns_servers: str = None) -> str:
-    """Create a new VM from template with custom settings (memory, CPU, IP, etc.)."""
-    if not connect_to_vcenter():
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        content = service_instance.RetrieveContent()
-        
-        # Find template
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
-        )
-        
-        template = None
-        for vm in container.view:
-            if vm.config.template and vm.name == template_name:
-                template = vm
-                break
-        
-        if not template:
-            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
-        
-        # Create config spec for customization
-        config_spec = vim.vm.ConfigSpec()
-        
-        # Customize memory if specified
-        if memory_gb:
-            config_spec.memoryMB = memory_gb * 1024  # Convert GB to MB
-            config_spec.memoryHotAddEnabled = True
-        
-        # Customize CPU if specified
-        if cpu_count:
-            config_spec.numCPUs = cpu_count
-            config_spec.numCoresPerSocket = cpu_count
-            config_spec.cpuHotAddEnabled = True
-        
-        # Create guest customization spec if IP is specified
-        if ip_address:
-            guest_customization = vim.vm.customization.Sysprep()
-            guest_customization.userData = vim.vm.customization.UserData()
-            guest_customization.userData.computerName = vim.vm.customization.FixedName(name=new_vm_name)
-            
-            # Set IP configuration
-            nic_setting = vim.vm.customization.AdapterMapping()
-            nic_setting.adapter = vim.vm.customization.IPSettings()
-            nic_setting.adapter.ip = vim.vm.customization.FixedIp(ipAddress=ip_address)
-            
-            if netmask:
-                nic_setting.adapter.subnetMask = netmask
-            
-            if gateway:
-                nic_setting.adapter.gateway = [gateway]
-            
-            if dns_servers:
-                dns_list = [dns.strip() for dns in dns_servers.split(',')]
-                nic_setting.adapter.dnsServerList = dns_list
-            
-            # Use proper identification for Linux
-            guest_customization.identification = vim.vm.customization.LinuxPrep()
-            guest_customization.globalIPSettings = vim.vm.customization.GlobalIPSettings()
-            
-            config_spec.customization = guest_customization
-            config_spec.nicSettingMap = [nic_setting]
-        
-        # Clone the VM
-        task = template.Clone(folder=template.parent, name=new_vm_name, spec=config_spec)
-        
-        # Wait for task to complete
-        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-            pass
-        
-        if task.info.state == vim.TaskInfo.State.success:
-            result = f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
-            if memory_gb:
-                result += f"\n- Memory: {memory_gb} GB"
-            if cpu_count:
-                result += f"\n- CPU: {cpu_count} cores"
-            if ip_address:
-                result += f"\n- IP: {ip_address}"
-                if netmask:
-                    result += f"/{netmask}"
-                if gateway:
-                    result += f" (Gateway: {gateway})"
-            return result
-        else:
-            return f"❌ Failed to create VM: {task.info.error.msg}"
-            
-    except Exception as e:
-        return f"Error: {e}"
-
-@mcp.tool()
-def create_vm_with_network(template_name: str, new_vm_name: str, network_name: str, memory_gb: int = None, cpu_count: int = None) -> str:
-    """Create a new VM from template with specific network configuration."""
-    if not connect_to_vcenter():
-        return "Error: Could not connect to vCenter"
-    
-    try:
-        content = service_instance.RetrieveContent()
-        
-        # Find template
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
-        )
-        
-        template = None
-        for vm in container.view:
-            if vm.config.template and vm.name == template_name:
-                template = vm
-                break
-        
-        if not template:
-            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
-        
-        # Find network
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
-        )
-        
-        network = None
-        for net in container.view:
-            if net.name == network_name:
-                network = net
-                break
-        
-        if not network:
-            return f"Network '{network_name}' not found. Use list_networks() to see available networks."
-        
-        # Create config spec
-        config_spec = vim.vm.ConfigSpec()
-        
-        # Customize memory if specified
-        if memory_gb:
-            config_spec.memoryMB = memory_gb * 1024
-        
-        # Customize CPU if specified
-        if cpu_count:
-            config_spec.numCPUs = cpu_count
-        
-        # Configure network adapter
-        nic_spec = vim.vm.device.VirtualDeviceSpec()
-        nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
-        
-        # Create network adapter
-        nic_spec.device = vim.vm.device.VirtualVmxnet3()
-        nic_spec.device.key = -1
-        nic_spec.device.deviceInfo = vim.Description()
-        nic_spec.device.deviceInfo.label = "Network adapter 1"
-        nic_spec.device.deviceInfo.summary = network_name
-        
-        # Connect to network
-        if isinstance(network, vim.dvs.DistributedVirtualPortgroup):
-            nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
-            nic_spec.device.backing.port = vim.dvs.PortConnection()
-            nic_spec.device.backing.port.portgroupKey = network.key
-            nic_spec.device.backing.port.switchUuid = network.config.distributedVirtualSwitch.uuid
-        else:
-            nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
-            nic_spec.device.backing.network = network
-            nic_spec.device.backing.deviceName = network_name
-        
-        config_spec.deviceChange = [nic_spec]
-        
-        # Clone the VM
-        task = template.Clone(folder=template.parent, name=new_vm_name, spec=config_spec)
-        
-        # Wait for task to complete
-        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-            pass
-        
-        if task.info.state == vim.TaskInfo.State.success:
-            result = f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
-            result += f"\n- Network: {network_name}"
-            if memory_gb:
-                result += f"\n- Memory: {memory_gb} GB"
-            if cpu_count:
-                result += f"\n- CPU: {cpu_count} cores"
-            return result
-        else:
-            return f"❌ Failed to create VM: {task.info.error.msg}"
             
     except Exception as e:
         return f"Error: {e}"
@@ -807,6 +411,7 @@ def list_networks() -> str:
     except Exception as e:
         return f"Error: {e}"
 
+# Helper functions for VM creation
 def find_template(service_instance, template_name):
     """Find template by name."""
     try:

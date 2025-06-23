@@ -14,18 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the mcp-server directory
 COPY mcp-server/ ./mcp-server/
 
-# Copy additional test files
-COPY minimal_mcp_server.py .
-COPY test_mcp_client.py .
+# Copy the main FastMCP server
 COPY fastmcp_server.py .
-COPY simple_fastmcp_server.py .
-COPY vm_creation_test.py .
-
-# Make server executable
-RUN chmod +x mcp-server/server.py
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Run the hybrid FastMCP server
+# Run the FastMCP server
 CMD ["python", "fastmcp_server.py"] 
