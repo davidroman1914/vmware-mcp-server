@@ -1626,5 +1626,143 @@ def create_vm_working(template_name: str, new_vm_name: str, datastore_name: str 
     except Exception as e:
         return f"Error: {e}"
 
+@mcp.tool()
+def create_vm_official(template_name: str, new_vm_name: str, datastore_name: str = None, memory_gb: int = None, cpu_count: int = None, disk_gb: int = None, network_name: str = None) -> str:
+    """Create a new VM from template using official VMware pyVmomi pattern."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        
+        # Find template
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        template = None
+        for vm in container.view:
+            if vm.config.template and vm.name == template_name:
+                template = vm
+                break
+        
+        if not template:
+            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
+        
+        # Find datastore
+        datastore = None
+        if datastore_name:
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.Datastore], True
+            )
+            for ds in container.view:
+                if ds.name == datastore_name:
+                    datastore = ds
+                    break
+        
+        # Find network if specified
+        network = None
+        if network_name:
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
+            )
+            for net in container.view:
+                if net.name == network_name:
+                    network = net
+                    break
+        
+        # Create the relocation spec (official VMware pattern)
+        relospec = vim.vm.RelocateSpec()
+        if datastore:
+            relospec.datastore = datastore
+        
+        # Create the clone spec (official VMware pattern)
+        clonespec = vim.vm.CloneSpec()
+        clonespec.location = relospec
+        clonespec.powerOn = False
+        clonespec.template = False
+        
+        # Create config spec for customizations
+        config_spec = vim.vm.ConfigSpec()
+        
+        # Add memory and CPU customizations
+        if memory_gb:
+            config_spec.memoryMB = memory_gb * 1024
+        if cpu_count:
+            config_spec.numCPUs = cpu_count
+        
+        # Add disk customization if specified
+        if disk_gb:
+            # Find the first virtual disk in the template
+            template_disk = None
+            for device in template.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualDisk):
+                    template_disk = device
+                    break
+            
+            if template_disk:
+                disk_spec = vim.vm.device.VirtualDeviceSpec()
+                disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                disk_spec.device = vim.vm.device.VirtualDisk()
+                disk_spec.device.key = template_disk.key
+                disk_spec.device.capacityInKB = disk_gb * 1024 * 1024
+                disk_spec.device.backing = template_disk.backing
+                config_spec.deviceChange = [disk_spec]
+        
+        # Add network customization if specified
+        if network:
+            nic_spec = vim.vm.device.VirtualDeviceSpec()
+            nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
+            nic_spec.device = vim.vm.device.VirtualVmxnet3()
+            nic_spec.device.key = -1
+            nic_spec.device.deviceInfo = vim.Description()
+            nic_spec.device.deviceInfo.label = "Network adapter 1"
+            nic_spec.device.deviceInfo.summary = network_name
+            
+            if isinstance(network, vim.dvs.DistributedVirtualPortgroup):
+                nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                nic_spec.device.backing.port = vim.dvs.PortConnection()
+                nic_spec.device.backing.port.portgroupKey = network.key
+                nic_spec.device.backing.port.switchUuid = network.config.distributedVirtualSwitch.uuid
+            else:
+                nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                nic_spec.device.backing.network = network
+                nic_spec.device.backing.deviceName = network_name
+            
+            if config_spec.deviceChange:
+                config_spec.deviceChange.append(nic_spec)
+            else:
+                config_spec.deviceChange = [nic_spec]
+        
+        # Attach config spec to clone spec (official VMware pattern)
+        clonespec.config = config_spec
+        
+        # Clone the VM (official VMware pattern)
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clonespec)
+        
+        # Wait for task to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            result = f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
+            if datastore_name:
+                result += f"\n- Datastore: {datastore_name}"
+            if memory_gb:
+                result += f"\n- Memory: {memory_gb} GB"
+            if cpu_count:
+                result += f"\n- CPU: {cpu_count} cores"
+            if disk_gb:
+                result += f"\n- Disk: {disk_gb} GB"
+            if network_name:
+                result += f"\n- Network: {network_name}"
+            result += f"\n\n💡 Note: IP address will be assigned via DHCP. You can configure static IP after powering on the VM."
+            return result
+        else:
+            return f"❌ Failed to create VM: {task.info.error.msg}"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
 if __name__ == "__main__":
     mcp.run() 
