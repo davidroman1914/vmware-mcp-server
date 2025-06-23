@@ -37,7 +37,11 @@ def connect_to_vcenter():
         if not all([host, user, password]):
             return False
         
-        # Create SSL context
+        # Add timeout to prevent hanging
+        import socket
+        socket.setdefaulttimeout(3)  # 3 second timeout
+        
+        # Create SSL context with optimizations
         context = ssl.SSLContext(ssl.PROTOCOL_TLS)
         context.verify_mode = ssl.CERT_NONE
         context.check_hostname = False
@@ -66,20 +70,28 @@ def list_vms() -> str:
             content.rootFolder, [vim.VirtualMachine], True
         )
         
-        vms = []
+        # Fast listing - only get essential info
+        vm_list = []
         for vm in container.view:
             vm_info = {
                 "name": vm.name,
-                "power_state": vm.runtime.powerState,
-                "guest_id": getattr(vm.config, 'guestId', 'Unknown'),
+                "power_state": str(vm.runtime.powerState),
                 "cpu_count": vm.config.hardware.numCPU if hasattr(vm.config, 'hardware') and vm.config.hardware else 0,
                 "memory_mb": vm.config.hardware.memoryMB if hasattr(vm.config, 'hardware') and vm.config.hardware else 0,
-                "ip_address": vm.guest.ipAddress if vm.guest else None,
             }
-            vms.append(vm_info)
+            vm_list.append(vm_info)
         
         container.Destroy()
-        return f"Found {len(vms)} VMs:\n" + "\n".join([f"- {vm['name']} ({vm['power_state']})" for vm in vms])
+        
+        # Return formatted result
+        if not vm_list:
+            return "No VMs found."
+        
+        result = f"Found {len(vm_list)} VMs:\n"
+        for vm in vm_list:
+            result += f"- {vm['name']} ({vm['power_state']}) - {vm['cpu_count']} CPU, {vm['memory_mb']} MB RAM\n"
+        
+        return result
         
     except Exception as e:
         return f"Error listing VMs: {str(e)}"
@@ -139,6 +151,11 @@ def power_off_vm(vm_name: str) -> str:
         
     except Exception as e:
         return f"Error powering off VM: {str(e)}"
+
+@mcp.tool()
+def fast_test() -> str:
+    """A fast test that doesn't require vCenter connection."""
+    return "Fast test completed! This should be instant."
 
 @mcp.tool()
 def hello(name: str = "World") -> str:
