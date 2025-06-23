@@ -642,6 +642,7 @@ def create_vm_advanced(template_name: str, new_vm_name: str, memory_gb: int = No
                 dns_list = [dns.strip() for dns in dns_servers.split(',')]
                 nic_setting.adapter.dnsServerList = dns_list
             
+            # Use proper identification for Linux
             guest_customization.identification = vim.vm.customization.LinuxPrep()
             guest_customization.globalIPSettings = vim.vm.customization.GlobalIPSettings()
             
@@ -801,6 +802,64 @@ def list_networks() -> str:
             return result
         else:
             return "No networks found"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None, cpu_count: int = None) -> str:
+    """Create a new VM from template with custom memory and CPU (no IP customization)."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        
+        # Find template
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        template = None
+        for vm in container.view:
+            if vm.config.template and vm.name == template_name:
+                template = vm
+                break
+        
+        if not template:
+            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
+        
+        # Create config spec for customization
+        config_spec = vim.vm.ConfigSpec()
+        
+        # Customize memory if specified
+        if memory_gb:
+            config_spec.memoryMB = memory_gb * 1024  # Convert GB to MB
+            config_spec.memoryHotAddEnabled = True
+        
+        # Customize CPU if specified
+        if cpu_count:
+            config_spec.numCPUs = cpu_count
+            config_spec.numCoresPerSocket = cpu_count
+            config_spec.cpuHotAddEnabled = True
+        
+        # Clone the VM
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=config_spec)
+        
+        # Wait for task to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            result = f"✅ Successfully created VM '{new_vm_name}' from template '{template_name}'"
+            if memory_gb:
+                result += f"\n- Memory: {memory_gb} GB"
+            if cpu_count:
+                result += f"\n- CPU: {cpu_count} cores"
+            result += f"\n\n💡 Note: IP address will be assigned via DHCP. You can configure static IP after powering on the VM."
+            return result
+        else:
+            return f"❌ Failed to create VM: {task.info.error.msg}"
             
     except Exception as e:
         return f"Error: {e}"
