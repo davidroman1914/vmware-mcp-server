@@ -64,9 +64,9 @@ class VMwareMCPServer:
                 context.check_hostname = False
                 
                 self.service_instance = SmartConnect(
-                    host=host,
-                    user=user,
-                    pwd=password,
+                    host=host,  # type: ignore
+                    user=user,  # type: ignore
+                    pwd=password,  # type: ignore
                     sslContext=context
                 )
                 print("[DEBUG] Connected to vCenter successfully!", file=sys.stderr)
@@ -211,10 +211,65 @@ class VMwareMCPServer:
                         },
                         "datastore_name": {
                             "type": "string",
-                            "description": "Datastore name (optional)"
+                            "description": "Datastore name"
                         }
                     },
-                    "required": ["template_name", "vm_name", "hostname", "ip_address", "netmask", "gateway", "network_name"],
+                    "required": ["template_name", "vm_name", "network_name"],
+                    "additionalProperties": False
+                }
+            },
+            {
+                "name": "create_custom_vm",
+                "description": "Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "template_name": {
+                            "type": "string",
+                            "description": "Name of the template VM to clone from"
+                        },
+                        "vm_name": {
+                            "type": "string",
+                            "description": "Name for the new VM"
+                        },
+                        "hostname": {
+                            "type": "string",
+                            "description": "Hostname for the new VM (defaults to vm_name)"
+                        },
+                        "ip_address": {
+                            "type": "string",
+                            "description": "Static IP address (optional)"
+                        },
+                        "netmask": {
+                            "type": "string",
+                            "description": "Subnet mask (defaults to 255.255.255.0)"
+                        },
+                        "gateway": {
+                            "type": "string",
+                            "description": "Gateway IP address (required if ip_address is provided)"
+                        },
+                        "network_name": {
+                            "type": "string",
+                            "description": "Network/port group name"
+                        },
+                        "cpu_count": {
+                            "type": "integer",
+                            "description": "Number of CPUs (defaults to 2)"
+                        },
+                        "memory_gb": {
+                            "type": "integer",
+                            "description": "Memory in GB (defaults to 4)"
+                        },
+                        "disk_size_gb": {
+                            "type": "integer",
+                            "description": "Disk size in GB (defaults to 50)"
+                        },
+                        "datastore_name": {
+                            "type": "string",
+                            "description": "Datastore name (optional, uses first available)"
+                        }
+                    },
+                    "required": ["template_name", "vm_name", "network_name"],
                     "additionalProperties": False
                 }
             }
@@ -329,7 +384,34 @@ class VMwareMCPServer:
                             }
                         }
                 
-                result = self.vm_creation.create_vm_from_template(self.service_instance, arguments)
+                result = self.vm_creation.create_custom_vm(self.service_instance, arguments)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": params.get("id"),
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(result, indent=2)
+                            }
+                        ]
+                    }
+                }
+            
+            elif tool_name == "create_custom_vm":
+                # Use pyvmomi for VM creation with comprehensive customization
+                if not self.service_instance:
+                    if not self.connect_to_vcenter():
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": params.get("id"),
+                            "error": {
+                                "code": -1,
+                                "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
+                            }
+                        }
+                
+                result = self.vm_creation.create_custom_vm(self.service_instance, arguments)
                 return {
                     "jsonrpc": "2.0",
                     "id": params.get("id"),

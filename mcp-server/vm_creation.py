@@ -13,20 +13,33 @@ class VMCreationManager:
     def __init__(self):
         self.vm_info = VMInfoManager()
     
-    def create_vm_from_template(self, service_instance, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new VM from a template with customization."""
+    def create_custom_vm(self, service_instance, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new VM from template with comprehensive customization:
+        - Memory, CPU, Disk size
+        - IP address, hostname, network
+        - Powered off by default
+        """
         try:
             template_name = arguments.get("template_name")
             vm_name = arguments.get("vm_name")
-            hostname = arguments.get("hostname")
+            hostname = arguments.get("hostname", vm_name)
             ip_address = arguments.get("ip_address")
-            netmask = arguments.get("netmask")
+            netmask = arguments.get("netmask", "255.255.255.0")
             gateway = arguments.get("gateway")
             network_name = arguments.get("network_name")
-            cpu_count = arguments.get("cpu_count")
-            memory_mb = arguments.get("memory_mb")
-            disk_size_gb = arguments.get("disk_size_gb")
+            cpu_count = arguments.get("cpu_count", 2)
+            memory_gb = arguments.get("memory_gb", 4)
+            disk_size_gb = arguments.get("disk_size_gb", 50)
             datastore_name = arguments.get("datastore_name")
+            
+            # Validate required parameters
+            if not template_name:
+                return {"error": "template_name is required"}
+            if not vm_name:
+                return {"error": "vm_name is required"}
+            if not network_name:
+                return {"error": "network_name is required"}
             
             # Get the template VM
             template_vm = self.vm_info.get_vm_by_name(service_instance, template_name)
@@ -56,6 +69,13 @@ class VMCreationManager:
             
             # Find folder
             folder = template_vm.parent
+            if not folder:
+                return {"error": "Could not determine VM folder"}
+            
+            # Cast folder to proper type
+            folder = folder if isinstance(folder, vim.Folder) else None
+            if not folder:
+                return {"error": "Parent is not a valid folder"}
             
             # Create relocation spec
             relospec = vim.vm.RelocateSpec()
@@ -65,54 +85,50 @@ class VMCreationManager:
             # Create clone spec
             clonespec = vim.vm.CloneSpec()
             clonespec.location = relospec
-            clonespec.powerOn = False
+            clonespec.powerOn = False  # Keep powered off
             clonespec.template = False
             
-            # Create customization spec
-            customizationspec = vim.vm.customization.Specification()
-            
-            # Identity
-            identity = vim.vm.customization.LinuxPrep()
-            identity.hostName = vim.vm.customization.FixedName(name=hostname)
-            identity.domain = vim.vm.customization.FixedName(name="local")
-            customizationspec.identity = identity
-            
-            # Network interface
-            adapter_mapping = vim.vm.customization.AdapterMapping()
-            adapter_mapping.adapter = vim.vm.customization.IPSettings()
-            adapter_mapping.adapter.ip = vim.vm.customization.FixedIp(ipAddress=ip_address)
-            adapter_mapping.adapter.subnetMask = netmask
-            adapter_mapping.adapter.gateway = [gateway]
-            adapter_mapping.adapter.dnsServerList = ["8.8.8.8", "8.8.4.4"]
-            
-            customizationspec.nicSettingMap = [adapter_mapping]
-            customizationspec.globalIPSettings = vim.vm.customization.GlobalIPSettings()
-            customizationspec.globalIPSettings.dnsServerList = ["8.8.8.8", "8.8.4.4"]
-            
-            clonespec.customization = customizationspec
-            
-            # Hardware customization if specified
-            if cpu_count or memory_mb or disk_size_gb:
-                config_spec = vim.vm.ConfigSpec()
+            # Create customization spec for IP and hostname
+            if ip_address and gateway:
+                customizationspec = vim.vm.customization.Specification()
                 
-                if cpu_count:
-                    config_spec.numCPUs = cpu_count
+                # Identity
+                identity = vim.vm.customization.LinuxPrep()
+                identity.hostName = vim.vm.customization.FixedName(name=hostname)
+                identity.domain = vim.vm.customization.FixedName(name="local")
+                customizationspec.identity = identity
                 
-                if memory_mb:
-                    config_spec.memoryMB = memory_mb
+                # Network interface
+                adapter_mapping = vim.vm.customization.AdapterMapping()
+                adapter_mapping.adapter = vim.vm.customization.IPSettings()
+                adapter_mapping.adapter.ip = vim.vm.customization.FixedIp(ipAddress=ip_address)
+                adapter_mapping.adapter.subnetMask = netmask
+                adapter_mapping.adapter.gateway = [gateway]
+                adapter_mapping.adapter.dnsServerList = ["8.8.8.8", "8.8.4.4"]
                 
-                if disk_size_gb:
-                    # Find the first disk and resize it
-                    for device in template_vm.config.hardware.device:
-                        if isinstance(device, vim.vm.device.VirtualDisk):
-                            disk_spec = vim.vm.device.VirtualDeviceSpec()
-                            disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
-                            disk_spec.device = device
-                            disk_spec.device.capacityInKB = disk_size_gb * 1024 * 1024
-                            config_spec.deviceChange = [disk_spec]
-                            break
+                customizationspec.nicSettingMap = [adapter_mapping]
+                customizationspec.globalIPSettings = vim.vm.customization.GlobalIPSettings()
+                customizationspec.globalIPSettings.dnsServerList = ["8.8.8.8", "8.8.4.4"]
                 
-                clonespec.config = config_spec
+                clonespec.customization = customizationspec
+            
+            # Hardware customization
+            config_spec = vim.vm.ConfigSpec()
+            config_spec.numCPUs = cpu_count
+            config_spec.memoryMB = memory_gb * 1024  # Convert GB to MB
+            
+            # Disk customization
+            if template_vm.config and template_vm.config.hardware:
+                for device in template_vm.config.hardware.device:
+                    if isinstance(device, vim.vm.device.VirtualDisk):
+                        disk_spec = vim.vm.device.VirtualDeviceSpec()
+                        disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                        disk_spec.device = device
+                        disk_spec.device.capacityInKB = disk_size_gb * 1024 * 1024  # Convert GB to KB
+                        config_spec.deviceChange = [disk_spec]
+                        break
+            
+            clonespec.config = config_spec
             
             # Clone the VM
             task = template_vm.Clone(folder=folder, name=vm_name, spec=clonespec)
@@ -122,27 +138,18 @@ class VMCreationManager:
                 time.sleep(1)
             
             if task.info.state == vim.TaskInfo.State.success:
-                # Get the new VM
                 new_vm = task.info.result
-                
-                # Power on the VM
-                power_task = new_vm.PowerOn()
-                while power_task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-                    time.sleep(1)
-                
-                if power_task.info.state == vim.TaskInfo.State.success:
-                    return {
-                        "message": f"Successfully created and powered on VM '{vm_name}'",
-                        "vm_name": vm_name,
-                        "ip_address": ip_address,
-                        "hostname": hostname
-                    }
-                else:
-                    return {
-                        "message": f"VM '{vm_name}' created but failed to power on",
-                        "vm_name": vm_name,
-                        "error": power_task.info.error.msg if power_task.info.error else "Unknown error"
-                    }
+                return {
+                    "message": f"Successfully created VM '{vm_name}' (powered off)",
+                    "vm_name": vm_name,
+                    "hostname": hostname,
+                    "ip_address": ip_address,
+                    "cpu_count": cpu_count,
+                    "memory_gb": memory_gb,
+                    "disk_size_gb": disk_size_gb,
+                    "network": network_name,
+                    "datastore": datastore.name
+                }
             else:
                 return {"error": f"Failed to create VM '{vm_name}': {task.info.error.msg if task.info.error else 'Unknown error'}"}
                 

@@ -263,6 +263,127 @@ def test_with_customizations(template, new_vm_name, datastore, network, resource
         print(f"❌ Clone with customizations error: {e}")
         return False
 
+def create_custom_vm(template, new_vm_name, datastore, network, resource_pool):
+    """Create a single VM with all customizations: memory, CPU, disk, and IP."""
+    print(f"\n🚀 Creating custom VM: {new_vm_name}")
+    print("📋 Specifications:")
+    print("   - Memory: 4 GB")
+    print("   - CPU: 2 cores")
+    print("   - Disk: 50 GB")
+    print("   - IP: 10.60.132.105")
+    print("   - Network: PROD VMs")
+    print("   - Powered off by default")
+    
+    try:
+        # Create relocation spec with both datastore and resource pool
+        relospec = vim.vm.RelocateSpec()
+        relospec.datastore = datastore
+        relospec.pool = resource_pool
+        
+        # Create clone spec
+        clone_spec = vim.vm.CloneSpec()
+        clone_spec.location = relospec
+        clone_spec.powerOn = False  # Keep powered off
+        clone_spec.template = False
+        
+        # Create config spec for hardware customizations
+        config_spec = vim.vm.ConfigSpec()
+        config_spec.memoryMB = 4 * 1024  # 4GB
+        config_spec.numCPUs = 2
+        
+        # Disk customization - resize the first disk
+        for device in template.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualDisk):
+                disk_spec = vim.vm.device.VirtualDeviceSpec()
+                disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                disk_spec.device = device
+                disk_spec.device.capacityInKB = 50 * 1024 * 1024  # 50GB in KB
+                config_spec.deviceChange = [disk_spec]
+                print("📋 Disk customization: 50GB")
+                break
+        
+        # Network customization
+        if network:
+            # Find existing network adapter and update it
+            for device in template.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                    nic_spec = vim.vm.device.VirtualDeviceSpec()
+                    nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                    nic_spec.device = device
+                    
+                    if isinstance(network, vim.dvs.DistributedVirtualPortgroup):
+                        nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                        nic_spec.device.backing.port = vim.dvs.PortConnection()
+                        nic_spec.device.backing.port.portgroupKey = network.key
+                        nic_spec.device.backing.port.switchUuid = network.config.distributedVirtualSwitch.uuid
+                    else:
+                        nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                        nic_spec.device.backing.network = network
+                        nic_spec.device.backing.deviceName = network.name
+                    
+                    # Add to device changes
+                    if config_spec.deviceChange:
+                        config_spec.deviceChange.append(nic_spec)
+                    else:
+                        config_spec.deviceChange = [nic_spec]
+                    print("📋 Network customization: PROD VMs")
+                    break
+        
+        # IP customization
+        customizationspec = vim.vm.customization.Specification()
+        
+        # Identity
+        identity = vim.vm.customization.LinuxPrep()
+        identity.hostName = vim.vm.customization.FixedName(name=new_vm_name)
+        identity.domain = vim.vm.customization.FixedName(name="local")
+        customizationspec.identity = identity
+        
+        # Network interface with IP
+        adapter_mapping = vim.vm.customization.AdapterMapping()
+        adapter_mapping.adapter = vim.vm.customization.IPSettings()
+        adapter_mapping.adapter.ip = vim.vm.customization.FixedIp(ipAddress="10.60.132.105")
+        adapter_mapping.adapter.subnetMask = "255.255.255.0"
+        adapter_mapping.adapter.gateway = ["10.60.132.1"]
+        adapter_mapping.adapter.dnsServerList = ["8.8.8.8", "8.8.4.4"]
+        
+        customizationspec.nicSettingMap = [adapter_mapping]
+        customizationspec.globalIPSettings = vim.vm.customization.GlobalIPSettings()
+        customizationspec.globalIPSettings.dnsServerList = ["8.8.8.8", "8.8.4.4"]
+        
+        clone_spec.customization = customizationspec
+        print("📋 IP customization: 10.60.132.105")
+        
+        # Attach config spec to clone spec
+        clone_spec.config = config_spec
+        
+        print("🔄 Starting VM creation...")
+        
+        # Clone the VM
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
+        
+        # Wait for task to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            new_vm = task.info.result
+            print(f"✅ VM created successfully: {new_vm_name}")
+            print(f"📊 VM Details:")
+            print(f"   - Name: {new_vm.name}")
+            print(f"   - Power State: {new_vm.runtime.powerState}")
+            print(f"   - Memory: {new_vm.config.hardware.memoryMB} MB")
+            print(f"   - CPU: {new_vm.config.hardware.numCPU} cores")
+            print(f"   - IP: 10.60.132.105")
+            print(f"   - Network: PROD VMs")
+            return True
+        else:
+            print(f"❌ VM creation failed: {task.info.error.msg}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ VM creation error: {e}")
+        return False
+
 def main():
     """Main debug function."""
     print("🚀 Starting VM Creation Debug Script")
@@ -309,29 +430,27 @@ def main():
             return
         
         print("\n" + "=" * 50)
-        print("🧪 Starting VM Creation Tests")
+        print("🚀 Creating Single Custom VM")
         print("=" * 50)
         
-        # Test 1: Simple clone
-        success1 = test_simple_clone(template, f"{NEW_VM_NAME}-simple", resource_pool)
-        
-        # Test 2: Clone with datastore
-        success2 = test_with_datastore(template, f"{NEW_VM_NAME}-datastore", datastore, resource_pool)
-        
-        # Test 3: Clone with customizations
-        success3 = test_with_customizations(template, f"{NEW_VM_NAME}-custom", datastore, network, resource_pool)
+        # Create one VM with all customizations
+        success = create_custom_vm(template, NEW_VM_NAME, datastore, network, resource_pool)
         
         print("\n" + "=" * 50)
-        print("📊 Test Results Summary")
+        print("📊 Final Result")
         print("=" * 50)
-        print(f"Simple Clone: {'✅ PASS' if success1 else '❌ FAIL'}")
-        print(f"With Datastore: {'✅ PASS' if success2 else '❌ FAIL'}")
-        print(f"With Customizations: {'✅ PASS' if success3 else '❌ FAIL'}")
-        
-        if success1 and success2 and success3:
-            print("\n🎉 All tests passed! VM creation is working.")
+        if success:
+            print("🎉 VM creation successful!")
+            print(f"✅ Created VM: {NEW_VM_NAME}")
+            print("📋 Specifications applied:")
+            print("   - Memory: 4 GB")
+            print("   - CPU: 2 cores") 
+            print("   - Disk: 50 GB")
+            print("   - IP: 10.60.132.105")
+            print("   - Network: PROD VMs")
+            print("   - Powered off by default")
         else:
-            print("\n🔍 Some tests failed. Check the error messages above.")
+            print("❌ VM creation failed. Check the error messages above.")
         
     finally:
         # Disconnect
