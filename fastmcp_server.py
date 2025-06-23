@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FastMCP VMware Server - Pure pyvmomi approach
+FastMCP VMware Server - Fast REST API approach
 """
 
 import sys
@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 from fastmcp import Context
 import os
 import ssl
+import requests
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
 
@@ -18,7 +19,7 @@ mcp = FastMCP(name="VMware MCP Server")
 service_instance = None
 
 def connect_to_vcenter():
-    """Connect to vCenter using pyvmomi."""
+    """Connect to vCenter using pyvmomi for power operations."""
     global service_instance
     
     if service_instance:
@@ -58,96 +59,66 @@ def connect_to_vcenter():
         print(f"Connection error: {e}", file=sys.stderr)
         return False
 
-@mcp.tool()
-def list_vms() -> str:
-    """List all VMs using pyvmomi - optimized for speed."""
-    if not connect_to_vcenter():
-        return "Error: Could not connect to vCenter"
+def get_vcenter_session():
+    """Get vCenter REST API session for fast operations."""
+    host = os.getenv('VCENTER_HOST')
+    user = os.getenv('VCENTER_USER')
+    password = os.getenv('VCENTER_PASSWORD')
+    
+    if not all([host, user, password]):
+        return None
     
     try:
-        content = service_instance.RetrieveContent()
-        
-        # Use a more targeted container view - get VMs from all folders
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True  # True = recurse into subfolders
+        # Create session
+        session_url = f"https://{host}/rest/com/vmware/cis/session"
+        response = requests.post(
+            session_url,
+            auth=(user, password),
+            verify=False,
+            timeout=5
         )
         
-        vms = []
-        for vm in container.view:
-            # Skip templates quickly
-            if hasattr(vm, 'config') and vm.config and vm.config.template:
-                continue
-                
-            # Get only essential properties
-            try:
-                memory_mb = vm.config.hardware.memoryMB if vm.config and vm.config.hardware else 0
-                memory_gb = round(memory_mb / 1024, 1) if memory_mb else 0
-                
-                vm_info = {
-                    'name': vm.name,
-                    'power_state': vm.runtime.powerState,
-                    'cpu_count': vm.config.hardware.numCPU if vm.config and vm.config.hardware else 0,
-                    'memory_gb': memory_gb
-                }
-                vms.append(vm_info)
-            except:
-                # Skip VMs with missing config
-                continue
-        
-        # Clean up the container view
-        container.Destroy()
-        
-        if vms:
-            result = f"Found {len(vms)} VMs:\n"
-            for vm in vms:
-                result += f"- {vm['name']} ({vm['power_state']}, {vm['cpu_count']} CPU, {vm['memory_gb']} GB RAM)\n"
-            return result
+        if response.status_code == 200:
+            session_id = response.json()['value']
+            return session_id
         else:
-            return "No VMs found"
+            print(f"Failed to create session: {response.status_code}", file=sys.stderr)
+            return None
             
     except Exception as e:
-        return f"Error: {e}"
+        print(f"Session error: {e}", file=sys.stderr)
+        return None
 
 @mcp.tool()
-def list_vms_fast() -> str:
-    """List all VMs using pyvmomi - ultra fast (no memory calculation)."""
-    if not connect_to_vcenter():
+def list_vms() -> str:
+    """List all VMs using fast REST API."""
+    session_id = get_vcenter_session()
+    if not session_id:
         return "Error: Could not connect to vCenter"
     
     try:
-        content = service_instance.RetrieveContent()
+        host = os.getenv('VCENTER_HOST')
+        headers = {'vmware-api-session-id': session_id}
         
-        # Use a minimal container view for maximum speed
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True  # True = recurse into subfolders
-        )
+        # Get VMs - this should be very fast
+        vm_url = f"https://{host}/rest/vcenter/vm"
+        response = requests.get(vm_url, headers=headers, verify=False, timeout=10)
         
-        vms = []
-        for vm in container.view:
-            # Skip templates quickly
-            if hasattr(vm, 'config') and vm.config and vm.config.template:
-                continue
-                
-            # Get only name and power state for maximum speed
-            try:
-                vm_info = {
-                    'name': vm.name,
-                    'power_state': vm.runtime.powerState
-                }
-                vms.append(vm_info)
-            except:
-                continue
-        
-        # Clean up the container view
-        container.Destroy()
-        
-        if vms:
-            result = f"Found {len(vms)} VMs (fast mode):\n"
+        if response.status_code == 200:
+            vms = response.json()['value']
+            
+            if not vms:
+                return "No VMs found"
+            
+            result = f"Found {len(vms)} VMs:\n"
             for vm in vms:
-                result += f"- {vm['name']} ({vm['power_state']})\n"
+                name = vm.get('name', 'Unknown')
+                power_state = vm.get('power_state', 'Unknown')
+                result += f"- {name} ({power_state})\n"
+            
             return result
         else:
-            return "No VMs found"
+            return f"Error: Failed to get VMs (HTTP {response.status_code})"
             
     except Exception as e:
         return f"Error: {e}"
@@ -374,10 +345,14 @@ def create_vm_from_template(template_name: str, new_vm_name: str, datastore_name
 @mcp.tool()
 def debug_connection() -> str:
     """Debug connection status."""
-    if connect_to_vcenter():
-        return "✓ pyvmomi: Connected successfully"
-    else:
-        return "✗ pyvmomi: Connection failed"
+    # Test REST API
+    session_id = get_vcenter_session()
+    rest_status = "✓ REST API: Connected" if session_id else "✗ REST API: Failed"
+    
+    # Test pyvmomi
+    pyvmomi_status = "✓ pyvmomi: Connected" if connect_to_vcenter() else "✗ pyvmomi: Failed"
+    
+    return f"Connection Status:\n{rest_status}\n{pyvmomi_status}"
 
 if __name__ == "__main__":
     mcp.run() 
