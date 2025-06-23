@@ -835,19 +835,10 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
         
         # Create relocation spec (required for location)
         relospec = vim.vm.RelocateSpec()
-        # Use same datastore as template
-        if template.datastore and len(template.datastore) > 0:
-            relospec.datastore = template.datastore[0]
+        relospec.datastore = template.datastore[0] if template.datastore else None
         
-        # Only set resource pool if template has one and it's valid
-        if hasattr(template, 'resourcePool') and template.resourcePool:
-            try:
-                # Test if the resource pool is accessible
-                if template.resourcePool.name:
-                    relospec.pool = template.resourcePool
-            except:
-                # If resource pool is not accessible, don't set it
-                pass
+        # Don't set resource pool to avoid "spec.location.pool" errors
+        # The VM will inherit the resource pool from the template's location
         
         clone_spec.location = relospec
         clone_spec.config = vim.vm.ConfigSpec()
@@ -996,15 +987,8 @@ def create_vm_with_datastore(template_name: str, new_vm_name: str, datastore_nam
         relospec = vim.vm.RelocateSpec()
         relospec.datastore = datastore
         
-        # Only set resource pool if template has one and it's valid
-        if hasattr(template, 'resourcePool') and template.resourcePool:
-            try:
-                # Test if the resource pool is accessible
-                if template.resourcePool.name:
-                    relospec.pool = template.resourcePool
-            except:
-                # If resource pool is not accessible, don't set it
-                pass
+        # Don't set resource pool to avoid "spec.location.pool" errors
+        # The VM will inherit the resource pool from the template's location
         
         clone_spec.location = relospec
         clone_spec.config = vim.vm.ConfigSpec()
