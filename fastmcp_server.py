@@ -1764,5 +1764,167 @@ def create_vm_official(template_name: str, new_vm_name: str, datastore_name: str
     except Exception as e:
         return f"Error: {e}"
 
+@mcp.tool()
+def create_custom_vm(template_name: str, new_vm_name: str, ip_address: str = None, netmask: str = "255.255.255.0", gateway: str = None, memory_gb: int = 4, cpu_count: int = 2, disk_gb: int = 50, network_name: str = "PROD VMs", datastore_name: str = None) -> str:
+    """Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        
+        # Find template
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        template = None
+        for vm in container.view:
+            if vm.config.template and vm.name == template_name:
+                template = vm
+                break
+        
+        if not template:
+            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
+        
+        # Find datastore
+        datastore = None
+        if datastore_name:
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.Datastore], True
+            )
+            for ds in container.view:
+                if ds.name == datastore_name:
+                    datastore = ds
+                    break
+        
+        if not datastore:
+            # Use the first available datastore
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.Datastore], True
+            )
+            datastore = container.view[0]
+        
+        # Find network
+        network = None
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
+        )
+        for net in container.view:
+            if net.name == network_name:
+                network = net
+                break
+        
+        if not network:
+            return f"Network '{network_name}' not found. Use list_networks() to see available networks."
+        
+        # Find resource pool
+        resource_pool = template.resourcePool
+        
+        # Create relocation spec with both datastore and resource pool
+        relospec = vim.vm.RelocateSpec()
+        relospec.datastore = datastore
+        relospec.pool = resource_pool
+        
+        # Create clone spec
+        clonespec = vim.vm.CloneSpec()
+        clonespec.location = relospec
+        clonespec.powerOn = False  # Keep powered off
+        clonespec.template = False
+        
+        # Create config spec for hardware customizations
+        config_spec = vim.vm.ConfigSpec()
+        config_spec.memoryMB = memory_gb * 1024  # Convert GB to MB
+        config_spec.numCPUs = cpu_count
+        
+        # Disk customization - resize the first disk
+        for device in template.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualDisk):
+                disk_spec = vim.vm.device.VirtualDeviceSpec()
+                disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                disk_spec.device = device
+                disk_spec.device.capacityInKB = disk_gb * 1024 * 1024  # Convert GB to KB
+                config_spec.deviceChange = [disk_spec]
+                break
+        
+        # Network customization
+        if network:
+            # Find existing network adapter and update it
+            for device in template.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                    nic_spec = vim.vm.device.VirtualDeviceSpec()
+                    nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                    nic_spec.device = device
+                    
+                    if isinstance(network, vim.dvs.DistributedVirtualPortgroup):
+                        nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                        nic_spec.device.backing.port = vim.dvs.PortConnection()
+                        nic_spec.device.backing.port.portgroupKey = network.key
+                        nic_spec.device.backing.port.switchUuid = network.config.distributedVirtualSwitch.uuid
+                    else:
+                        nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                        nic_spec.device.backing.network = network
+                        nic_spec.device.backing.deviceName = network.name
+                    
+                    # Add to device changes
+                    if config_spec.deviceChange:
+                        config_spec.deviceChange.append(nic_spec)
+                    else:
+                        config_spec.deviceChange = [nic_spec]
+                    break
+        
+        # IP customization
+        if ip_address and gateway:
+            customizationspec = vim.vm.customization.Specification()
+            
+            # Identity
+            identity = vim.vm.customization.LinuxPrep()
+            identity.hostName = vim.vm.customization.FixedName(name=new_vm_name)
+            identity.domain = "local"  # Use string instead of FixedName
+            customizationspec.identity = identity
+            
+            # Network interface with IP
+            adapter_mapping = vim.vm.customization.AdapterMapping()
+            adapter_mapping.adapter = vim.vm.customization.IPSettings()
+            adapter_mapping.adapter.ip = vim.vm.customization.FixedIp(ipAddress=ip_address)
+            adapter_mapping.adapter.subnetMask = netmask
+            adapter_mapping.adapter.gateway = [gateway]
+            adapter_mapping.adapter.dnsServerList = ["8.8.8.8", "8.8.4.4"]
+            
+            customizationspec.nicSettingMap = [adapter_mapping]
+            customizationspec.globalIPSettings = vim.vm.customization.GlobalIPSettings()
+            customizationspec.globalIPSettings.dnsServerList = ["8.8.8.8", "8.8.4.4"]
+            
+            clonespec.customization = customizationspec
+        
+        # Attach config spec to clone spec
+        clonespec.config = config_spec
+        
+        # Clone the VM
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clonespec)
+        
+        # Wait for task to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            new_vm = task.info.result
+            result = f"✅ Successfully created VM '{new_vm_name}' (powered off)"
+            result += f"\n- Template: {template_name}"
+            result += f"\n- Memory: {memory_gb} GB"
+            result += f"\n- CPU: {cpu_count} cores"
+            result += f"\n- Disk: {disk_gb} GB"
+            result += f"\n- Network: {network_name}"
+            result += f"\n- Datastore: {datastore.name}"
+            if ip_address:
+                result += f"\n- IP Address: {ip_address}"
+            result += f"\n- Power State: Powered off"
+            return result
+        else:
+            return f"❌ Failed to create VM: {task.info.error.msg}"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
 if __name__ == "__main__":
     mcp.run() 
