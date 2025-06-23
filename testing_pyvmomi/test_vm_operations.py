@@ -410,6 +410,42 @@ def create_vm_from_template(source_vm, resources, customization_params=None):
         if task.info.state == 'success':
             cloned_vm = task.info.result
             print(f"✅ VM cloned successfully: {cloned_vm.name}")
+            
+            # Power on the VM
+            print(f"🔌 Powering on {cloned_vm.name}...")
+            power_task = cloned_vm.PowerOn()
+            wait_for_task(power_task)
+            
+            if power_task.info.state == 'success':
+                print(f"✅ VM powered on successfully")
+                
+                # Wait for guest tools to be ready
+                print("⏳ Waiting for guest tools to be ready...")
+                max_wait = 120  # 2 minutes max wait
+                wait_time = 0
+                while wait_time < max_wait:
+                    if cloned_vm.guest and cloned_vm.guest.toolsRunningStatus == 'guestToolsRunning':
+                        print(f"✅ Guest tools are running")
+                        break
+                    time.sleep(5)
+                    wait_time += 5
+                    print(f"   • Waiting... ({wait_time}s)")
+                
+                if wait_time >= max_wait:
+                    print(f"⚠️ Guest tools not ready after {max_wait}s, but VM is powered on")
+                
+                # Show final VM status
+                print(f"\n🎉 VM Creation Complete!")
+                print(f"   • Name: {cloned_vm.name}")
+                print(f"   • ID: {cloned_vm._moId}")
+                print(f"   • Power State: {cloned_vm.runtime.powerState}")
+                if cloned_vm.guest:
+                    print(f"   • Guest Tools: {cloned_vm.guest.toolsRunningStatus}")
+                    print(f"   • IP Addresses: {cloned_vm.guest.ipAddress}")
+                
+            else:
+                print(f"❌ Failed to power on VM: {power_task.info.error.msg}")
+            
             return cloned_vm
         else:
             print(f"❌ Failed to clone VM: {task.info.error.msg}")
