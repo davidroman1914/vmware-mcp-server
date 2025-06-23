@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 from fastmcp import Context
 import os
 import ssl
+import requests
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
 
@@ -57,6 +58,65 @@ def connect_to_vcenter():
     except Exception as e:
         print(f"Connection error: {e}", file=sys.stderr)
         return False
+
+def get_vcenter_session():
+    """Get vCenter REST API session."""
+    try:
+        host = os.getenv('VCENTER_HOST')
+        user = os.getenv('VCENTER_USER')
+        password = os.getenv('VCENTER_PASSWORD')
+        
+        if not all([host, user, password]):
+            return None
+        
+        # Create session
+        session = requests.Session()
+        session.verify = False  # Disable SSL verification for speed
+        
+        # Login
+        login_url = f"https://{host}/rest/com/vmware/cis/session"
+        response = session.post(login_url, auth=(user, password), timeout=5)
+        
+        if response.status_code == 200:
+            return session
+        else:
+            return None
+            
+    except Exception as e:
+        print(f"REST session error: {e}", file=sys.stderr)
+        return None
+
+@mcp.tool()
+def list_vms_rest() -> str:
+    """List VMs using REST API - SUPER FAST."""
+    session = get_vcenter_session()
+    if not session:
+        return "Error: Failed to connect to vCenter REST API."
+    
+    try:
+        host = os.getenv('VCENTER_HOST')
+        url = f"https://{host}/rest/vcenter/vm"
+        
+        response = session.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            vms = response.json().get('value', [])
+            
+            if not vms:
+                return "No VMs found."
+            
+            result = f"Found {len(vms)} VMs:\n"
+            for vm in vms:
+                name = vm.get('name', 'Unknown')
+                power_state = vm.get('power_state', 'Unknown')
+                result += f"- {name} ({power_state})\n"
+            
+            return result
+        else:
+            return f"Error: HTTP {response.status_code}"
+            
+    except Exception as e:
+        return f"Error listing VMs: {str(e)}"
 
 @mcp.tool()
 def list_vms() -> str:
