@@ -125,7 +125,7 @@ def list_vms() -> str:
 
 @mcp.tool()
 def get_vm_details(vm_name: str) -> str:
-    """Get detailed VM information using pyvmomi."""
+    """Get detailed VM information using pyvmomi including IP addresses and network info."""
     if not connect_to_vcenter():
         return "Error: Could not connect to vCenter"
     
@@ -144,6 +144,7 @@ def get_vm_details(vm_name: str) -> str:
         if not vm:
             return f"VM '{vm_name}' not found"
         
+        # Basic VM info
         memory_mb = vm.config.hardware.memoryMB if vm.config and vm.config.hardware else 0
         memory_gb = round(memory_mb / 1024, 1) if memory_mb else 0
         
@@ -158,9 +159,78 @@ def get_vm_details(vm_name: str) -> str:
             'template': vm.config.template if vm.config else False
         }
         
-        return f"VM Details:\n" + "\n".join([
-            f"- {key}: {value}" for key, value in details.items()
-        ])
+        # Get IP addresses and network info
+        if vm.guest and vm.guest.net:
+            ip_addresses = []
+            for nic in vm.guest.net:
+                if nic.ipConfig and nic.ipConfig.ipAddress:
+                    for ip in nic.ipConfig.ipAddress:
+                        ip_info = f"{ip.ipAddress}/{ip.prefixLength}"
+                        if ip.state == 'preferred':
+                            ip_info += " (primary)"
+                        ip_addresses.append(ip_info)
+            
+            if ip_addresses:
+                details['ip_addresses'] = ', '.join(ip_addresses)
+            else:
+                details['ip_addresses'] = 'No IP addresses found'
+        else:
+            details['ip_addresses'] = 'Network info not available'
+        
+        # Get network adapters
+        if vm.config and vm.config.hardware and vm.config.hardware.device:
+            network_adapters = []
+            for device in vm.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                    adapter_info = f"{device.deviceInfo.label}"
+                    if hasattr(device, 'backing') and device.backing:
+                        if hasattr(device.backing, 'network'):
+                            adapter_info += f" -> {device.backing.network.name}"
+                        elif hasattr(device.backing, 'port'):
+                            adapter_info += f" -> {device.backing.port.portgroupKey}"
+                    network_adapters.append(adapter_info)
+            
+            if network_adapters:
+                details['network_adapters'] = ', '.join(network_adapters)
+            else:
+                details['network_adapters'] = 'No network adapters found'
+        else:
+            details['network_adapters'] = 'Network adapters not available'
+        
+        # Get datastore info
+        if vm.datastore:
+            datastores = [ds.name for ds in vm.datastore]
+            details['datastores'] = ', '.join(datastores)
+        else:
+            details['datastores'] = 'No datastores found'
+        
+        # Get resource pool
+        if vm.resourcePool:
+            details['resource_pool'] = vm.resourcePool.name
+        else:
+            details['resource_pool'] = 'N/A'
+        
+        # Get folder location
+        if vm.parent:
+            details['folder'] = vm.parent.name
+        else:
+            details['folder'] = 'Root'
+        
+        # Get guest OS info
+        if vm.guest:
+            details['guest_os'] = vm.guest.guestFullName if vm.guest.guestFullName else 'N/A'
+            details['tools_status'] = vm.guest.toolsStatus if vm.guest.toolsStatus else 'N/A'
+        else:
+            details['guest_os'] = 'N/A'
+            details['tools_status'] = 'N/A'
+        
+        result = f"VM Details for '{vm.name}':\n"
+        for key, value in details.items():
+            # Format the key nicely
+            formatted_key = key.replace('_', ' ').title()
+            result += f"- {formatted_key}: {value}\n"
+        
+        return result
         
     except Exception as e:
         return f"Error: {e}"
@@ -353,6 +423,63 @@ def debug_connection() -> str:
     pyvmomi_status = "✓ pyvmomi: Connected" if connect_to_vcenter() else "✗ pyvmomi: Failed"
     
     return f"Connection Status:\n{rest_status}\n{pyvmomi_status}"
+
+@mcp.tool()
+def get_vm_ip(vm_name: str) -> str:
+    """Get VM IP addresses using fast REST API."""
+    session_id = get_vcenter_session()
+    if not session_id:
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        host = os.getenv('VCENTER_HOST')
+        headers = {'vmware-api-session-id': session_id}
+        
+        # Get VM by name
+        vm_url = f"https://{host}/rest/vcenter/vm"
+        response = requests.get(vm_url, headers=headers, verify=False, timeout=10)
+        
+        if response.status_code == 200:
+            vms = response.json()['value']
+            vm = next((v for v in vms if v['name'] == vm_name), None)
+            
+            if not vm:
+                return f"VM '{vm_name}' not found"
+            
+            vm_id = vm['vm']
+            
+            # Get VM guest info for IP addresses
+            guest_url = f"https://{host}/rest/vcenter/vm/{vm_id}/guest"
+            guest_response = requests.get(guest_url, headers=headers, verify=False, timeout=10)
+            
+            if guest_response.status_code == 200:
+                guest_info = guest_response.json()['value']
+                
+                result = f"IP Addresses for VM '{vm_name}':\n"
+                
+                if guest_info.get('net'):
+                    for nic in guest_info['net']:
+                        if nic.get('ipConfig') and nic['ipConfig'].get('ipAddress'):
+                            for ip in nic['ipConfig']['ipAddress']:
+                                ip_addr = ip.get('ipAddress', 'Unknown')
+                                prefix = ip.get('prefixLength', 'Unknown')
+                                state = ip.get('state', 'Unknown')
+                                
+                                ip_info = f"- {ip_addr}/{prefix}"
+                                if state == 'preferred':
+                                    ip_info += " (primary)"
+                                result += ip_info + "\n"
+                else:
+                    result += "- No IP addresses found (VM may be powered off or tools not running)\n"
+                
+                return result
+            else:
+                return f"Error: Failed to get guest info (HTTP {guest_response.status_code})"
+        else:
+            return f"Error: Failed to get VMs (HTTP {response.status_code})"
+            
+    except Exception as e:
+        return f"Error: {e}"
 
 if __name__ == "__main__":
     mcp.run() 
