@@ -174,12 +174,14 @@ def list_vms_fast() -> str:
             result = []
             
             for vm in vms:
+                # Handle different possible memory field names
+                memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
                 vm_info = {
                     'name': vm['name'],
                     'power_state': vm['power_state'],
                     'cpu_count': vm['cpu_count'],
-                    'memory_mb': vm['memory_MiB'],
-                    'memory_gb': round(vm['memory_MiB'] / 1024, 1),
+                    'memory_mb': memory_mb,
+                    'memory_gb': round(memory_mb / 1024, 1) if memory_mb else 0,
                     'vm_id': vm['vm']
                 }
                 result.append(vm_info)
@@ -244,12 +246,14 @@ def get_vm_details_fast(vm_name: str) -> str:
             vm = next((v for v in vms if v['name'] == vm_name), None)
             
             if vm:
+                # Handle different possible memory field names
+                memory_mb = vm.get('memory_MiB') or vm.get('memory_size_mib') or vm.get('memory_mb', 0)
                 details = {
                     'name': vm['name'],
                     'power_state': vm['power_state'],
                     'cpu_count': vm['cpu_count'],
-                    'memory_mb': vm['memory_MiB'],
-                    'memory_gb': round(vm['memory_MiB'] / 1024, 1),
+                    'memory_mb': memory_mb,
+                    'memory_gb': round(memory_mb / 1024, 1) if memory_mb else 0,
                     'vm_id': vm['vm'],
                     'guest_id': vm.get('guest_ID', 'N/A'),
                     'version': vm.get('version', 'N/A')
