@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  vmware-mcp-server-clean:
+  vmware-mcp-server:
     build: .
     environment:
       - VCENTER_HOST=${VCENTER_HOST}

@@ -1,121 +1,32 @@
 # VMware MCP Server Makefile
 
-# Help
-.PHONY: help
-help: ## Show this help message
+.PHONY: help build run test install clean
+
+help: ## Show available commands
 	@echo "Available commands:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
-# Local development with uv
-.PHONY: setup-uv
-setup-uv: ## Sync dependencies from pyproject.toml (first time or anytime)
-	cd mcp-server && uv sync
+setup: ## Create .env file from template
+	@if [ ! -f .env ]; then cp env.example .env; echo "Created .env file"; else echo ".env file exists"; fi
 
-.PHONY: install
-install: ## Sync dependencies from pyproject.toml
-	cd mcp-server && uv sync
+install: ## Install dependencies
+	pip install -r requirements.txt
 
-.PHONY: run-local
-run-local: ## Run the MCP server locally using uv
-	cd mcp-server && uv run python server.py
+run: ## Run server locally
+	cd mcp-server && python server.py
 
-.PHONY: test
-test: ## Test the power management functionality
-	cd mcp-server && uv run python test_power_management.py
+test: ## Test server locally
+	cd mcp-server && python test_server.py
 
-.PHONY: shell
-shell: ## Start a Python shell with dependencies
-	cd mcp-server && uv run python
-
-# Docker workflow
-.PHONY: setup
-setup: ## Create .env file from template if needed
-	@if [ ! -f .env ]; then \
-		cp env.example .env; \
-		echo "Created .env file. Please edit it with your vCenter credentials."; \
-	else \
-		echo ".env file already exists."; \
-	fi
-
-.PHONY: build
 build: ## Build Docker image
-	docker build -t vmware-mcp-server-clean .
+	docker build -t vmware-mcp-server .
 
-.PHONY: run
-run: ## Run the MCP server in Docker
-	docker-compose up vmware-mcp-server-clean
+run-docker: ## Run in Docker
+	docker-compose up vmware-mcp-server
 
-.PHONY: run-detached
-run-detached: ## Run the MCP server in Docker (detached)
-	docker-compose up -d vmware-mcp-server-clean
+test-docker: ## Test in Docker
+	docker run --rm --env-file .env vmware-mcp-server python mcp-server/test_server.py
 
-.PHONY: docker-run
-docker-run: ## Run the server directly in Docker (without docker-compose)
-	docker run --rm -it \
-		-e VCENTER_HOST=$(VCENTER_HOST) \
-		-e VCENTER_USER=$(VCENTER_USER) \
-		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
-		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
-		vmware-mcp-server-clean
-
-.PHONY: stop
-stop: ## Stop Docker containers
-	docker-compose down
-
-.PHONY: clean
-clean: ## Clean up Docker resources
+clean: ## Clean up
 	docker-compose down --rmi all --volumes
-
-.PHONY: logs
-logs: ## View Docker logs
-	docker-compose logs -f vmware-mcp-server-clean
-
-.PHONY: all
-all: setup build run ## Setup, build, and run Docker workflow
-
-# Development helpers
-.PHONY: lint
-lint: ## Run linting (if configured)
-	cd mcp-server && uv run python -m flake8 . || echo "Linting not configured"
-
-.PHONY: format
-format: ## Format code (if configured)
-	cd mcp-server && uv run python -m black . || echo "Formatting not configured"
-
-.PHONY: debug-templates
-debug-templates: ## Debug VM template detection (requires real vCenter connection)
-	cd mcp-server && uv run python debug_templates.py
-
-.PHONY: docker-test
-docker-test: build ## Test the MCP server in Docker
-	@echo "🔍 Running vCenter environment analysis in Docker..."
-	docker run --rm \
-		--env-file .env \
-		vmware-mcp-server-clean:latest \
-		python test_templates_docker.py
-
-.PHONY: docker-shell
-docker-shell: ## Start a shell in the Docker container for manual testing
-	docker build -t vmware-mcp-server-clean .
-	docker run --rm -it \
-		-e VCENTER_HOST=$(VCENTER_HOST) \
-		-e VCENTER_USER=$(VCENTER_USER) \
-		-e VCENTER_PASSWORD=$(VCENTER_PASSWORD) \
-		-e VCENTER_INSECURE=$(VCENTER_INSECURE) \
-		vmware-mcp-server-clean /bin/bash
-
-.PHONY: clean-files
-clean-files: ## Clean up generated files
-	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache
-
-# Debug targets
-debug-templates: build
-	@echo "🔍 Running vCenter environment analysis in Docker..."
-	docker run --rm \
-		--env-file .env \
-		vmware-mcp-server:latest \
-		python debug_templates.py
-
-debug-templates-local:
-	@echo "🔍 Running vCenter environment analysis locally..."
-	cd mcp-server && python debug_templates.py 
+	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache 

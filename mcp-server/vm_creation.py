@@ -1,408 +1,190 @@
 #!/usr/bin/env python3
 """
-VM Creation module for VMware vCenter
-Handles VM cloning and template deployment operations
+VM Creation Module using pyvmomi
+Handles creating VMs from templates with customization.
 """
 
-from vmware.vapi.vsphere.client import create_vsphere_client
-from config import Config
+from typing import Dict, Any, Optional
+from pyVmomi import vim
+from vm_info import VMInfoManager
+import time
 
-def get_vsphere_client():
-    """Create vSphere client with environment variables."""
-    host = Config.get_vcenter_host()
-    user = Config.get_vcenter_user()
-    pwd = Config.get_vcenter_password()
-    insecure = Config.get_vcenter_insecure()
-
-    if not all([host, user, pwd]):
-        missing = Config.validate_config()
-        raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
-
-    # Create session with SSL handling
-    import requests
-    import urllib3
+class VMCreationManager:
+    def __init__(self):
+        self.vm_info = VMInfoManager()
     
-    session = requests.Session()
-    session.verify = not insecure
-    
-    # Disable SSL warnings for demo (not recommended in production)
-    if insecure:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-    # Create vSphere client (exactly as shown in PyPI docs)
-    return create_vsphere_client(
-        server=host, 
-        username=user, 
-        password=pwd, 
-        session=session
-    )
-
-def clone_vm_text(source_vm_id: str, new_vm_name: str, datastore_id: str = None, 
-                  resource_pool_id: str = None, folder_id: str = None,
-                  hostname: str = None, ip_address: str = None, 
-                  netmask: str = None, gateway: str = None,
-                  cpu_count: int = None, memory_mb: int = None):
-    """Clone a VM with optional customization and return formatted text."""
-    try:
-        client = get_vsphere_client()
-        
-        # Get source VM info
-        source_vm_info = client.vcenter.VM.get(source_vm_id)
-        
-        # Prepare clone spec
-        from vmware.vcenter.vm_client import CloneSpec, PlacementSpec
-        
-        # Basic placement
-        placement = PlacementSpec()
-        if folder_id:
-            placement.folder = folder_id
-        if resource_pool_id:
-            placement.resource_pool = resource_pool_id
-        if datastore_id:
-            placement.datastore = datastore_id
-        
-        # Create clone spec
-        clone_spec = CloneSpec()
-        clone_spec.name = new_vm_name
-        clone_spec.placement = placement
-        
-        # Add hardware customization if specified
-        if cpu_count is not None or memory_mb is not None:
-            from vmware.vcenter.vm_client import HardwareUpdateSpec
+    def create_vm_from_template(self, service_instance, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new VM from a template with customization."""
+        try:
+            template_name = arguments.get("template_name")
+            vm_name = arguments.get("vm_name")
+            hostname = arguments.get("hostname")
+            ip_address = arguments.get("ip_address")
+            netmask = arguments.get("netmask")
+            gateway = arguments.get("gateway")
+            network_name = arguments.get("network_name")
+            cpu_count = arguments.get("cpu_count")
+            memory_mb = arguments.get("memory_mb")
+            disk_size_gb = arguments.get("disk_size_gb")
+            datastore_name = arguments.get("datastore_name")
             
-            hardware_spec = HardwareUpdateSpec()
-            if cpu_count is not None:
-                hardware_spec.cpu_count = cpu_count
-            if memory_mb is not None:
-                hardware_spec.memory_size_MiB = memory_mb
+            # Get the template VM
+            template_vm = self.vm_info.get_vm_by_name(service_instance, template_name)
+            if not template_vm:
+                return {"error": f"Template VM '{template_name}' not found"}
             
-            clone_spec.hardware = hardware_spec
-        
-        # Add customization if network settings provided
-        if any([hostname, ip_address, netmask, gateway]):
-            from vmware.vcenter.vm_client import CustomizationSpec, GlobalIPSettings, LinuxPrep
+            # Get content and find required objects
+            content = service_instance.RetrieveContent()
+            
+            # Find datastore
+            datastore = None
+            if datastore_name:
+                datastore = self._find_datastore(content, datastore_name)
+            if not datastore:
+                # Use the first available datastore
+                datastore = content.viewManager.CreateContainerView(
+                    content.rootFolder, [vim.Datastore], True
+                ).view[0]
+            
+            # Find network
+            network = self._find_network(content, network_name)
+            if not network:
+                return {"error": f"Network '{network_name}' not found"}
+            
+            # Find resource pool
+            resource_pool = template_vm.resourcePool
+            
+            # Find folder
+            folder = template_vm.parent
+            
+            # Create relocation spec
+            relospec = vim.vm.RelocateSpec()
+            relospec.datastore = datastore
+            relospec.pool = resource_pool
+            
+            # Create clone spec
+            clonespec = vim.vm.CloneSpec()
+            clonespec.location = relospec
+            clonespec.powerOn = False
+            clonespec.template = False
             
             # Create customization spec
-            custom_spec = CustomizationSpec()
+            customizationspec = vim.vm.customization.Specification()
             
-            # Global IP settings
-            global_ip = GlobalIPSettings()
-            if gateway:
-                global_ip.gateway = [gateway]
-            custom_spec.global_ip_settings = global_ip
+            # Identity
+            identity = vim.vm.customization.LinuxPrep()
+            identity.hostName = vim.vm.customization.FixedName(name=hostname)
+            identity.domain = vim.vm.customization.FixedName(name="local")
+            customizationspec.identity = identity
             
-            # Linux preparation (assuming Linux guest)
-            linux_prep = LinuxPrep()
-            if hostname:
-                linux_prep.host_name = hostname
-            custom_spec.identity = linux_prep
+            # Network interface
+            adapter_mapping = vim.vm.customization.AdapterMapping()
+            adapter_mapping.adapter = vim.vm.customization.IPSettings()
+            adapter_mapping.adapter.ip = vim.vm.customization.FixedIp(ipAddress=ip_address)
+            adapter_mapping.adapter.subnetMask = netmask
+            adapter_mapping.adapter.gateway = [gateway]
+            adapter_mapping.adapter.dnsServerList = ["8.8.8.8", "8.8.4.4"]
             
-            # Add to clone spec
-            clone_spec.customization = custom_spec
-        
-        # Perform the clone
-        task = client.vcenter.VM.clone(source_vm_id, clone_spec)
-        
-        # Wait for completion (simplified - in production you'd want proper task monitoring)
-        import time
-        time.sleep(2)  # Give it a moment
-        
-        # Build customization summary
-        customizations = []
-        if any([hostname, ip_address, netmask, gateway]):
-            customizations.append("Network")
-        if cpu_count is not None:
-            customizations.append(f"CPU: {cpu_count} cores")
-        if memory_mb is not None:
-            customizations.append(f"Memory: {memory_mb} MB")
-        
-        customization_summary = ", ".join(customizations) if customizations else "None"
-        
-        return f"✅ Successfully initiated clone of VM '{source_vm_info.name}' to '{new_vm_name}'\n" \
-               f"   • Source VM: {source_vm_info.name} (ID: {source_vm_id})\n" \
-               f"   • New VM: {new_vm_name}\n" \
-               f"   • Task ID: {task}\n" \
-               f"   • Customization: {customization_summary}"
-        
-    except Exception as e:
-        return f"❌ Error cloning VM {source_vm_id}: {str(e)}"
-
-def deploy_from_template_text(template_id: str, new_vm_name: str, datastore_id: str = None, 
-                             resource_pool_id: str = None, folder_id: str = None,
-                             hostname: str = None, ip_address: str = None, 
-                             netmask: str = None, gateway: str = None,
-                             cpu_count: int = None, memory_mb: int = None):
-    """Deploy a VM from a template (following Ansible approach)."""
-    try:
-        client = get_vsphere_client()
-        
-        # Determine if this is a Content Library template or VM template
-        is_content_library_template = template_id.startswith('urn:vapi:com.vmware.content.library.Item:')
-        
-        if is_content_library_template:
-            # For Content Library templates, we'll use the dedicated function
-            # but handle the parameters properly
-            datastore_param = datastore_id if datastore_id else None
-            cluster_param = resource_pool_id if resource_pool_id else None
-            cpu_param = cpu_count if cpu_count is not None else None
-            memory_param = memory_mb if memory_mb is not None else None
+            customizationspec.nicSettingMap = [adapter_mapping]
+            customizationspec.globalIPSettings = vim.vm.customization.GlobalIPSettings()
+            customizationspec.globalIPSettings.dnsServerList = ["8.8.8.8", "8.8.4.4"]
             
-            return deploy_from_content_library_template_text(
-                template_urn=template_id,
-                vm_name=new_vm_name,
-                datacenter=None,
-                datastore=datastore_param,
-                cluster=cluster_param,
-                cpu_count=cpu_param,
-                memory_mb=memory_param
-            )
-        else:
-            # Clone from VM template (following Ansible approach)
-            return clone_vm_text(
-                source_vm_id=template_id,
-                new_vm_name=new_vm_name,
-                datastore_id=datastore_id,
-                resource_pool_id=resource_pool_id,
-                folder_id=folder_id,
-                hostname=hostname,
-                ip_address=ip_address,
-                netmask=netmask,
-                gateway=gateway,
-                cpu_count=cpu_count,
-                memory_mb=memory_mb
-            )
-        
-    except Exception as e:
-        return f"❌ Error deploying from template: {str(e)}"
-
-def list_datastores_text():
-    """List all datastores and return formatted text."""
-    try:
-        client = get_vsphere_client()
-        
-        # Get all datastores
-        datastores = client.vcenter.Datastore.list()
-        
-        if not datastores:
-            return "ℹ️ No datastores found in vCenter."
-        
-        # Format the output
-        result = f"📋 Found {len(datastores)} datastore(s):\n\n"
-        
-        for ds in datastores:
-            ds_info = client.vcenter.Datastore.get(ds.datastore)
+            clonespec.customization = customizationspec
             
-            # Calculate free space percentage
-            free_space_pct = 0
-            if ds_info.capacity and ds_info.free_space:
-                free_space_pct = (ds_info.free_space / ds_info.capacity) * 100
-            
-            # Format capacity in GB
-            capacity_gb = ds_info.capacity / (1024**3) if ds_info.capacity else 0
-            free_gb = ds_info.free_space / (1024**3) if ds_info.free_space else 0
-            
-            # Space indicator
-            space_emoji = "🟢" if free_space_pct > 20 else "🟡" if free_space_pct > 10 else "🔴"
-            
-            result += f"{space_emoji} **{ds_info.name}** (ID: `{ds.datastore}`)\n"
-            result += f"   • Type: {ds_info.type}\n"
-            result += f"   • Capacity: {capacity_gb:.1f} GB\n"
-            result += f"   • Free Space: {free_gb:.1f} GB ({free_space_pct:.1f}%)\n"
-            result += f"   • Accessible: {'Yes' if ds_info.accessible else 'No'}\n"
-            result += "\n"
-        
-        return result
-        
-    except Exception as e:
-        return f"❌ Error listing datastores: {str(e)}"
-
-def list_resource_pools_text():
-    """List all resource pools and return formatted text."""
-    try:
-        client = get_vsphere_client()
-        
-        # Get all resource pools
-        resource_pools = client.vcenter.ResourcePool.list()
-        
-        if not resource_pools:
-            return "ℹ️ No resource pools found in vCenter."
-        
-        # Format the output
-        result = f"📋 Found {len(resource_pools)} resource pool(s):\n\n"
-        
-        for rp in resource_pools:
-            rp_info = client.vcenter.ResourcePool.get(rp.resource_pool)
-            
-            result += f"🏊 **{rp_info.name}** (ID: `{rp.resource_pool}`)\n"
-            result += f"   • CPU: {rp_info.config.cpu_allocation.reservation} MHz reserved\n"
-            result += f"   • Memory: {rp_info.config.memory_allocation.reservation} MB reserved\n"
-            result += f"   • Parent: {rp_info.parent or 'Root'}\n"
-            result += "\n"
-        
-        return result
-        
-    except Exception as e:
-        return f"❌ Error listing resource pools: {str(e)}"
-
-def list_folders_text():
-    """List all VM folders and return formatted text."""
-    try:
-        client = get_vsphere_client()
-        
-        # Get all folders
-        folders = client.vcenter.Folder.list()
-        
-        if not folders:
-            return "ℹ️ No folders found in vCenter."
-        
-        # Format the output
-        result = f"📋 Found {len(folders)} folder(s):\n\n"
-        
-        for folder in folders:
-            folder_info = client.vcenter.Folder.get(folder.folder)
-            
-            result += f"📁 **{folder_info.name}** (ID: `{folder.folder}`)\n"
-            result += f"   • Type: {folder_info.type}\n"
-            result += f"   • Parent: {folder_info.parent or 'Root'}\n"
-            result += "\n"
-        
-        return result
-        
-    except Exception as e:
-        return f"❌ Error listing folders: {str(e)}"
-
-def create_template_from_vm_text(vm_name: str, template_name: str, library_name: str, **kwargs):
-    """Create a template in Content Library from a VM (following Ansible approach)."""
-    try:
-        client = get_vsphere_client()
-        
-        # Find the VM by name
-        vms = client.vcenter.VM.list()
-        vm_id = None
-        
-        for vm in vms:
-            vm_info = client.vcenter.VM.get(vm.vm)
-            if vm_info.name == vm_name:
-                vm_id = vm.vm
-                break
-        
-        if not vm_id:
-            return f"❌ Error: VM '{vm_name}' not found in vCenter."
-        
-        # Find the Content Library by name
-        libraries = client.content.Library.list()
-        library_id = None
-        
-        for library in libraries:
-            if library.name == library_name:
-                library_id = library.library
-                break
-        
-        if not library_id:
-            return f"❌ Error: Content Library '{library_name}' not found in vCenter."
-        
-        # Create template in Content Library
-        # This follows the Ansible vmware.vmware.content_template approach
-        try:
-            # Use the Content Library API to create a template from the VM
-            # Note: This is a simplified version - the actual API call may vary
-            # based on the specific VMware vCenter version and API
-            
-            # For now, we'll use the basic approach and provide guidance
-            result = f"✅ Successfully initiated template creation:\n"
-            result += f"   • VM: {vm_name} (ID: {vm_id})\n"
-            result += f"   • Template Name: {template_name}\n"
-            result += f"   • Library: {library_name} (ID: {library_id})\n"
-            result += f"   • Status: Template creation initiated\n\n"
-            result += f"💡 Note: This uses the Content Library API following Ansible's approach.\n"
-            result += f"   The template will be created in the Content Library and can be\n"
-            result += f"   deployed using the deploy_from_template function."
-            
-            return result
-            
-        except Exception as e:
-            return f"❌ Error creating template: {str(e)}"
-        
-    except Exception as e:
-        return f"❌ Error creating template from VM: {str(e)}"
-
-def deploy_from_content_library_template_text(template_urn: str, vm_name: str, datacenter: str = None, 
-                                             datastore: str = None, cluster: str = None, 
-                                             cpu_count: int = None, memory_mb: int = None):
-    """Deploy a VM from a Content Library template and return formatted text."""
-    try:
-        client = get_vsphere_client()
-        
-        # Deploy from Content Library template
-        deployment_spec = client.vcenter.vm_template.library_items.DeploySpec()
-        
-        # Set placement if any placement parameters are provided
-        if any([datacenter, datastore, cluster]):
-            placement = client.vcenter.vm_template.library_items.PlacementSpec()
-            
-            if datacenter:
-                placement.datacenter = datacenter
-            if datastore:
-                placement.datastore = datastore
-            if cluster:
-                placement.cluster = cluster
+            # Hardware customization if specified
+            if cpu_count or memory_mb or disk_size_gb:
+                config_spec = vim.vm.ConfigSpec()
                 
-            deployment_spec.placement = placement
-        
-        # Set hardware customization if specified
-        if cpu_count is not None or memory_mb is not None:
-            hardware_customization = client.vcenter.vm_template.library_items.HardwareCustomizationSpec()
+                if cpu_count:
+                    config_spec.numCPUs = cpu_count
+                
+                if memory_mb:
+                    config_spec.memoryMB = memory_mb
+                
+                if disk_size_gb:
+                    # Find the first disk and resize it
+                    for device in template_vm.config.hardware.device:
+                        if isinstance(device, vim.vm.device.VirtualDisk):
+                            disk_spec = vim.vm.device.VirtualDeviceSpec()
+                            disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                            disk_spec.device = device
+                            disk_spec.device.capacityInKB = disk_size_gb * 1024 * 1024
+                            config_spec.deviceChange = [disk_spec]
+                            break
+                
+                clonespec.config = config_spec
             
-            if cpu_count is not None:
-                cpu_spec = client.vcenter.vm_template.library_items.CpuUpdateSpec()
-                cpu_spec.count = cpu_count
-                hardware_customization.cpu_update = cpu_spec
+            # Clone the VM
+            task = template_vm.Clone(folder=folder, name=vm_name, spec=clonespec)
             
-            if memory_mb is not None:
-                memory_spec = client.vcenter.vm_template.library_items.MemoryUpdateSpec()
-                memory_spec.size_mib = memory_mb
-                hardware_customization.memory_update = memory_spec
+            # Wait for clone to complete
+            while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+                time.sleep(1)
             
-            deployment_spec.hardware_customization = hardware_customization
+            if task.info.state == vim.TaskInfo.State.success:
+                # Get the new VM
+                new_vm = task.info.result
+                
+                # Power on the VM
+                power_task = new_vm.PowerOn()
+                while power_task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+                    time.sleep(1)
+                
+                if power_task.info.state == vim.TaskInfo.State.success:
+                    return {
+                        "message": f"Successfully created and powered on VM '{vm_name}'",
+                        "vm_name": vm_name,
+                        "ip_address": ip_address,
+                        "hostname": hostname
+                    }
+                else:
+                    return {
+                        "message": f"VM '{vm_name}' created but failed to power on",
+                        "vm_name": vm_name,
+                        "error": power_task.info.error.msg if power_task.info.error else "Unknown error"
+                    }
+            else:
+                return {"error": f"Failed to create VM '{vm_name}': {task.info.error.msg if task.info.error else 'Unknown error'}"}
+                
+        except Exception as e:
+            return {"error": f"Error creating VM: {str(e)}"}
+    
+    def _find_datastore(self, content, datastore_name: str):
+        """Find a datastore by name."""
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.Datastore], True
+        )
         
-        # Deploy the template
-        vm_id = client.vcenter.vm_template.library_items.deploy(template_urn, deployment_spec)
+        for datastore in container.view:
+            if datastore.name == datastore_name:
+                container.Destroy()
+                return datastore
         
-        # Get the deployed VM info
-        vm_info = client.vcenter.VM.get(vm_id)
+        container.Destroy()
+        return None
+    
+    def _find_network(self, content, network_name: str):
+        """Find a network by name."""
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.dvs.DistributedVirtualPortgroup], True
+        )
         
-        result = f"✅ Successfully deployed VM '{vm_name}' from Content Library template\n\n"
-        result += f"📋 VM Details:\n"
-        result += f"   • VM ID: {vm_id}\n"
-        result += f"   • Name: {vm_info.name}\n"
-        result += f"   • Power State: {vm_info.power_state}\n"
+        for network in container.view:
+            if network.name == network_name:
+                container.Destroy()
+                return network
         
-        # Safely get guest OS info
-        guest_os = getattr(vm_info, 'guest_OS', None) or getattr(vm_info, 'guest_os', None) or 'Unknown'
-        result += f"   • Guest OS: {guest_os}\n"
+        container.Destroy()
         
-        # Safely get CPU count from nested cpu object
-        cpu_count_actual = 'Unknown'
-        if hasattr(vm_info, 'cpu') and vm_info.cpu:
-            cpu_count_actual = getattr(vm_info.cpu, 'count', 'Unknown')
-        result += f"   • CPU Count: {cpu_count_actual}\n"
+        # Try standard networks
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.Network], True
+        )
         
-        # Safely get memory size from nested memory object
-        memory_mb_actual = 'Unknown'
-        if hasattr(vm_info, 'memory') and vm_info.memory:
-            memory_mb_actual = getattr(vm_info.memory, 'size_MiB', 'Unknown')
-        result += f"   • Memory: {memory_mb_actual} MB\n"
+        for network in container.view:
+            if network.name == network_name:
+                container.Destroy()
+                return network
         
-        if datacenter:
-            result += f"   • Datacenter: {datacenter}\n"
-        if datastore:
-            result += f"   • Datastore: {datastore}\n"
-        if cluster:
-            result += f"   • Cluster: {cluster}\n"
-        
-        result += f"\n💡 The VM is ready for customization and power on."
-        
-        return result
-        
-    except Exception as e:
-        return f"❌ Error deploying from Content Library template: {str(e)}" 
+        container.Destroy()
+        return None 
