@@ -436,7 +436,8 @@ def create_vm_simple(template_name: str, new_vm_name: str) -> str:
             return f"Template '{template_name}' not found. Use list_templates() to see available templates."
         
         # Create VM with default settings (same folder and datastore as template)
-        task = template.Clone(folder=template.parent, name=new_vm_name, spec=vim.vm.ConfigSpec())
+        clone_spec = vim.vm.CloneSpec()
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
         
         # Wait for task to complete
         while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
@@ -829,19 +830,20 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
         if not template:
             return f"Template '{template_name}' not found. Use list_templates() to see available templates."
         
-        # Create config spec for customization
-        config_spec = vim.vm.ConfigSpec()
+        # Create clone spec for customization
+        clone_spec = vim.vm.CloneSpec()
+        clone_spec.config = vim.vm.ConfigSpec()
         
         # Customize memory if specified
         if memory_gb:
-            config_spec.memoryMB = memory_gb * 1024  # Convert GB to MB
-            config_spec.memoryHotAddEnabled = True
+            clone_spec.config.memoryMB = memory_gb * 1024  # Convert GB to MB
+            clone_spec.config.memoryHotAddEnabled = True
         
         # Customize CPU if specified
         if cpu_count:
-            config_spec.numCPUs = cpu_count
-            config_spec.numCoresPerSocket = cpu_count
-            config_spec.cpuHotAddEnabled = True
+            clone_spec.config.numCPUs = cpu_count
+            clone_spec.config.numCoresPerSocket = cpu_count
+            clone_spec.config.cpuHotAddEnabled = True
         
         # Customize disk size if specified
         if disk_gb:
@@ -861,7 +863,7 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
                 disk_spec.device.capacityInKB = disk_gb * 1024 * 1024  # Convert GB to KB
                 disk_spec.device.backing = template_disk.backing
                 
-                config_spec.deviceChange = [disk_spec]
+                clone_spec.config.deviceChange = [disk_spec]
         
         # Customize network if specified
         if network_name:
@@ -900,15 +902,15 @@ def create_vm_custom(template_name: str, new_vm_name: str, memory_gb: int = None
                     nic_spec.device.backing.deviceName = network_name
                 
                 # Add network spec to device changes
-                if config_spec.deviceChange:
-                    config_spec.deviceChange.append(nic_spec)
+                if clone_spec.config.deviceChange:
+                    clone_spec.config.deviceChange.append(nic_spec)
                 else:
-                    config_spec.deviceChange = [nic_spec]
+                    clone_spec.config.deviceChange = [nic_spec]
             else:
                 return f"Network '{network_name}' not found. Use list_networks() to see available networks."
         
         # Clone the VM
-        task = template.Clone(folder=template.parent, name=new_vm_name, spec=config_spec)
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
         
         # Wait for task to complete
         while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
