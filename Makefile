@@ -1,30 +1,32 @@
-# VMware vSphere VM List Makefile
+# VMware MCP Server Makefile
 
-.PHONY: help
-help: ## Show this help message
+.PHONY: help build run test install clean
+
+help: ## Show available commands
 	@echo "Available commands:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
-.PHONY: setup
 setup: ## Create .env file from template
-	@if [ ! -f .env ]; then \
-		cp env.example .env; \
-		echo "Created .env file. Please edit it with your vCenter credentials."; \
-	else \
-		echo ".env file already exists."; \
-	fi
+	@if [ ! -f .env ]; then cp env.example .env; echo "Created .env file"; else echo ".env file exists"; fi
 
-.PHONY: build
+install: ## Install dependencies
+	pip install -r requirements.txt
+
+run: ## Run server locally
+	cd mcp-server && python server.py
+
+test: ## Test server locally
+	cd mcp-server && python test_server.py
+
 build: ## Build Docker image
-	docker-compose build
+	docker build -t vmware-mcp-server .
 
-.PHONY: run
-run: ## Run the VM list script
-	docker-compose up --abort-on-container-exit
+run-docker: ## Run in Docker
+	docker-compose up vmware-mcp-server
 
-.PHONY: clean
-clean: ## Clean up Docker resources
-	docker-compose down --rmi all
+test-docker: ## Test in Docker
+	docker run --rm --env-file .env vmware-mcp-server python mcp-server/test_server.py
 
-.PHONY: all
-all: setup build run ## Setup, build, and run 
+clean: ## Clean up
+	docker-compose down --rmi all --volumes
+	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache 

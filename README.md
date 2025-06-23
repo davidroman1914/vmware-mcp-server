@@ -1,114 +1,238 @@
-# VMware vSphere VM List Docker Container
+# VMware MCP Server
 
-This Docker container provides a simple way to list all VMs from a VMware vCenter server using the official VMware vSphere Automation SDK for Python.
+A clean, focused Model Context Protocol (MCP) server for VMware vCenter management using pyvmomi.
 
-## Prerequisites
+## 🚀 Features
 
-- Docker and Docker Compose installed
-- Access to a VMware vCenter server
-- Valid credentials for the vCenter server
+- **VM Listing**: List all VMs with detailed information (power state, IP, CPU, memory, network adapters)
+- **Power Management**: Power on/off VMs by name
+- **VM Creation**: Create new VMs from templates with full customization (IP, hostname, CPU, memory, disk)
+- **MCP stdio Protocol**: Fully compatible with MCP clients
+- **Docker Support**: Easy deployment and testing
 
-## Quick Start
+## 🏛️ Project Structure
 
-1. **Clone or download this repository**
+```
+vmware-mcp-server/
+├── mcp-server/                  # Python logic only
+│   ├── server.py              # MCP server with stdio protocol
+│   ├── vm_info.py             # VM listing and information
+│   ├── power.py               # Power management (on/off)
+│   ├── vm_creation.py         # VM creation from templates
+│   └── test_server.py         # Test script
+├── requirements.txt            # Python dependencies (pyvmomi)
+├── pyproject.toml              # Project configuration
+├── Dockerfile                  # Docker configuration
+├── docker-compose.yml          # Docker Compose configuration
+├── Makefile                    # Build and run targets
+├── env.example                 # Environment variables template
+└── README.md                   # This file
+```
 
-2. **Set up environment variables**
-   ```bash
-   cp env.example .env
-   ```
-   Edit the `.env` file with your vCenter details:
-   ```bash
-   VCENTER_SERVER=your-vcenter-server.com
-   VCENTER_USERNAME=administrator@vsphere.local
-   VCENTER_PASSWORD=your_password
-   ```
+## 🔧 Setup
 
-3. **Build and run the container**
-   ```bash
-   docker-compose up --build
-   ```
+### Prerequisites
+- Python 3.10+
+- VMware vCenter access
+- Docker (optional)
 
-## Manual Docker Commands
+### Environment Variables
 
-If you prefer to use Docker commands directly:
+Create a `.env` file based on `env.example`:
 
-### Build the image
 ```bash
-docker build -t vmware-vm-list .
+VCENTER_HOST=your-vcenter-host
+VCENTER_USER=your-username
+VCENTER_PASSWORD=your-password
+VCENTER_INSECURE=true  # Set to "true" for self-signed certificates
 ```
 
-### Run the container
+## 🚀 Quick Start
+
+### Using Docker (Recommended)
+
 ```bash
-docker run --rm \
-  -e VCENTER_SERVER=your-vcenter-server.com \
-  -e VCENTER_USERNAME=administrator@vsphere.local \
-  -e VCENTER_PASSWORD=your_password \
-  vmware-vm-list \
-  python list_vms.py \
-  --server your-vcenter-server.com \
-  --username administrator@vsphere.local \
-  --password your_password \
-  --skip-verification
+# Setup environment
+make setup
+
+# Build and run
+make build
+make run-docker
+
+# Or run detached
+make run-detached
+
+# Test the server
+make test-docker
 ```
 
-## Command Line Options
+### Using Local Python
 
-The script supports the following command line arguments:
-
-- `--server`: vCenter server address (required)
-- `--username`: Username for authentication (required)
-- `--password`: Password for authentication (required)
-- `--skip-verification`: Skip SSL certificate verification (optional, useful for self-signed certificates)
-
-## Example Output
-
-```
-==================================================
-List Of VMs
-==================================================
-[{'memory_size_MiB': 4096,
-  'name': 'Test-VM-1',
-  'power_state': 'POWERED_ON',
-  'vm': 'vm-123'},
- {'memory_size_MiB': 2048,
-  'name': 'Test-VM-2',
-  'power_state': 'POWERED_OFF',
-  'vm': 'vm-456'}]
-==================================================
-Total VMs found: 2
-```
-
-## Troubleshooting
-
-### SSL Certificate Issues
-If you encounter SSL certificate errors, use the `--skip-verification` flag:
 ```bash
-python list_vms.py --server vcenter.example.com --username admin --password pass --skip-verification
+# Install dependencies
+make install
+
+# Run locally
+make run
+
+# Test locally
+make test
 ```
+
+## 📋 Available MCP Tools
+
+### 1. List VMs (`list_vms`)
+Lists all VMs in vCenter with detailed information.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "list_vms",
+    "arguments": {}
+  }
+}
+```
+
+### 2. Power On VM (`power_on_vm`)
+Powers on a VM by name.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "power_on_vm",
+    "arguments": {
+      "vm_name": "my-vm"
+    }
+  }
+}
+```
+
+### 3. Power Off VM (`power_off_vm`)
+Powers off a VM by name.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "power_off_vm",
+    "arguments": {
+      "vm_name": "my-vm"
+    }
+  }
+}
+```
+
+### 4. Create VM from Template (`create_vm_from_template`)
+Creates a new VM from a template with full customization.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "create_vm_from_template",
+    "arguments": {
+      "template_name": "ubuntu-template",
+      "vm_name": "new-vm",
+      "hostname": "new-vm",
+      "ip_address": "192.168.1.100",
+      "netmask": "255.255.255.0",
+      "gateway": "192.168.1.1",
+      "network_name": "VM Network",
+      "cpu_count": 2,
+      "memory_mb": 2048,
+      "disk_size_gb": 20,
+      "datastore_name": "datastore1"
+    }
+  }
+}
+```
+
+## 🎯 How to Prompt the MCP Server
+
+Here are example prompts you can use with the MCP server:
+
+### List all VMs
+```
+List all virtual machines in vCenter
+```
+
+### Power management
+```
+Power on the VM named "ubuntu-server"
+```
+
+```
+Power off the VM named "test-vm"
+```
+
+### Create a new VM
+```
+Create a new VM named "web-server" from the "ubuntu-template" with IP address 192.168.1.50, 4 CPUs, 8GB RAM, and 50GB disk
+```
+
+## 🛠️ Development
+
+### Available Make Targets
+
+```bash
+make help              # Show all available commands
+make setup             # Create .env file from template
+make install           # Install Python dependencies
+make run               # Run server locally
+make test              # Test server locally
+make build             # Build Docker image
+make run-docker        # Run server in Docker
+make test-docker       # Test server in Docker
+make stop              # Stop Docker containers
+make clean             # Clean up Docker resources
+make logs              # View Docker logs
+make docker-shell      # Start shell in Docker container
+```
+
+### Testing
+
+```bash
+# Test locally
+make test
+
+# Test in Docker
+make test-docker
+
+# Start interactive shell for manual testing
+make docker-shell
+```
+
+## 🔍 Troubleshooting
 
 ### Connection Issues
-- Ensure your vCenter server is accessible from the Docker host
-- Verify the server address and credentials
-- Check if any firewall rules are blocking the connection
+1. Verify vCenter credentials are correct
+2. Check network connectivity to vCenter
+3. For self-signed certificates, set `VCENTER_INSECURE=true`
 
-### Permission Issues
-- Make sure the user has sufficient permissions to list VMs in vCenter
-- The user should have at least read access to the vCenter inventory
+### VM Creation Issues
+1. Ensure the template VM exists and is accessible
+2. Verify network and datastore names are correct
+3. Check that the target IP address is available on the network
 
-## Security Notes
+### Power Management Issues
+1. Verify the VM name exists
+2. Check that the VM is not in a locked state
+3. Ensure you have sufficient permissions
 
-- The `--skip-verification` flag disables SSL certificate verification and should only be used in development/testing environments
-- Never commit your `.env` file with real credentials to version control
-- Consider using environment variables or Docker secrets for production deployments
+## 📄 License
 
-## Dependencies
-
-This container uses the following VMware SDK packages:
-- vsphere-automation-sdk==8.0.2.0
-- vsphere-automation-sdk-python==8.0.2.0
-- vsphere-automation-sdk-python-lib==8.0.2.0
-- vsphere-automation-sdk-python-samples==8.0.2.0
-
-## License
-
-This project is provided as-is for educational and development purposes. 
+This project is licensed under the MIT License. 

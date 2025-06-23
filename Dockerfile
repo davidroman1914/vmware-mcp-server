@@ -1,32 +1,24 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
-    g++ \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install VMware vSphere Automation SDK for Python from GitHub
-RUN pip install --no-cache-dir git+https://github.com/vmware/vsphere-automation-sdk-python.git
+# Copy the mcp-server directory
+COPY mcp-server/ ./mcp-server/
 
-# Copy the script
-COPY list_vms.py .
-
-# Make the script executable
-RUN chmod +x list_vms.py
+# Make server executable
+RUN chmod +x mcp-server/server.py
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Default command
-CMD ["python", "list_vms.py", "--help"] 
+# Run the MCP server
+CMD ["python", "mcp-server/server.py"] 
