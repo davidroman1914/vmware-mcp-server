@@ -304,6 +304,10 @@ class VMwareMCPServer:
                 request = json.loads(line)
                 method = request.get("method")
                 params = request.get("params", {})
+                request_id = request.get("id")
+                
+                # Add the request ID to params for handlers
+                params["id"] = request_id
                 
                 # Handle different MCP methods
                 if method == "initialize":
@@ -315,7 +319,7 @@ class VMwareMCPServer:
                 else:
                     response = {
                         "jsonrpc": "2.0",
-                        "id": request.get("id"),
+                        "id": request_id,
                         "error": {
                             "code": -32601,
                             "message": f"Unknown method: {method}"
