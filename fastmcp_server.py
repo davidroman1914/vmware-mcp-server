@@ -807,6 +807,74 @@ def list_networks() -> str:
     except Exception as e:
         return f"Error: {e}"
 
+def find_template(service_instance, template_name):
+    """Find template by name."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        for vm in container.view:
+            if vm.config.template and vm.name == template_name:
+                return vm
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+def find_datastore(service_instance, datastore_name):
+    """Find datastore by name."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.Datastore], True
+        )
+        
+        for ds in container.view:
+            if ds.name == datastore_name:
+                return ds
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+def find_network(service_instance, network_name):
+    """Find network by name."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
+        )
+        
+        for net in container.view:
+            if net.name == network_name:
+                return net
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+def find_resource_pool(service_instance):
+    """Find the default resource pool."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.ClusterComputeResource], True
+        )
+        
+        for cluster in container.view:
+            if cluster.resourcePool:
+                return cluster.resourcePool
+        
+        return None
+        
+    except Exception as e:
+        return None
+
 @mcp.tool()
 def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "10.60.132.105", netmask: str = "255.255.255.0", gateway: str = "10.60.132.1", memory_gb: int = 4, cpu_count: int = 2, disk_gb: int = 50, network_name: str = "PROD VMs", datastore_name: str = "ova-inf-vh03-ds-1") -> str:
     """Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default."""
@@ -814,50 +882,25 @@ def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "10
         return "Error: Could not connect to vCenter"
     
     try:
-        content = service_instance.RetrieveContent()
-        
         # Find template
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.VirtualMachine], True
-        )
-        
-        template = None
-        for vm in container.view:
-            if vm.config.template and vm.name == template_name:
-                template = vm
-                break
-        
+        template = find_template(service_instance, template_name)
         if not template:
             return f"Template '{template_name}' not found. Use list_templates() to see available templates."
         
         # Find datastore
-        datastore = None
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.Datastore], True
-        )
-        for ds in container.view:
-            if ds.name == datastore_name:
-                datastore = ds
-                break
-        
+        datastore = find_datastore(service_instance, datastore_name)
         if not datastore:
             return f"Datastore '{datastore_name}' not found. Use list_datastores() to see available datastores."
         
         # Find network
-        network = None
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
-        )
-        for net in container.view:
-            if net.name == network_name:
-                network = net
-                break
-        
+        network = find_network(service_instance, network_name)
         if not network:
             return f"Network '{network_name}' not found. Use list_networks() to see available networks."
         
         # Find resource pool
-        resource_pool = template.resourcePool
+        resource_pool = find_resource_pool(service_instance)
+        if not resource_pool:
+            return "Resource pool not found."
         
         # Create relocation spec with both datastore and resource pool
         relospec = vim.vm.RelocateSpec()
@@ -917,7 +960,7 @@ def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "10
         # Identity
         identity = vim.vm.customization.LinuxPrep()
         identity.hostName = vim.vm.customization.FixedName(name=new_vm_name)
-        identity.domain = "local"  # Use string instead of FixedName
+        identity.domain = "local"
         customizationspec.identity = identity
         
         # Network interface with IP
