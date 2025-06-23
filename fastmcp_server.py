@@ -143,9 +143,15 @@ def list_vms_detailed() -> str:
                 power_state = vm.get('power_state', 'Unknown')
                 cpu_count = vm.get('cpu_count', 0)
                 memory_size_mib = vm.get('memory_size_mib', 0)
-                memory_gb = memory_size_mib // 1024 if memory_size_mib else 0
                 
-                result += f"- {name} ({power_state}) - {cpu_count} CPU, {memory_gb} GB RAM\n"
+                # Proper memory conversion
+                if memory_size_mib and memory_size_mib > 0:
+                    memory_gb = round(memory_size_mib / 1024, 1)
+                    memory_str = f"{memory_gb} GB"
+                else:
+                    memory_str = "Unknown"
+                
+                result += f"- {name} ({power_state}) - {cpu_count} CPU, {memory_str} RAM\n"
             
             return result
         else:
@@ -209,6 +215,40 @@ def power_off_vm(vm_name: str) -> str:
         
     except Exception as e:
         return f"Error powering off VM: {str(e)}"
+
+@mcp.tool()
+def debug_vm_data() -> str:
+    """Debug tool to show raw VM data from REST API."""
+    session = get_vcenter_session()
+    if not session:
+        return "Error: Failed to connect to vCenter REST API."
+    
+    try:
+        host = os.getenv('VCENTER_HOST')
+        url = f"https://{host}/rest/vcenter/vm"
+        
+        response = session.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            vms = response.json().get('value', [])
+            
+            if not vms:
+                return "No VMs found."
+            
+            result = "Raw VM data from REST API:\n"
+            for vm in vms:
+                result += f"\nVM: {vm.get('name', 'Unknown')}\n"
+                result += f"  Power State: {vm.get('power_state', 'Unknown')}\n"
+                result += f"  CPU Count: {vm.get('cpu_count', 'Unknown')}\n"
+                result += f"  Memory Size MiB: {vm.get('memory_size_mib', 'Unknown')}\n"
+                result += f"  Raw memory data: {vm.get('memory_size_mib')} (type: {type(vm.get('memory_size_mib'))})\n"
+            
+            return result
+        else:
+            return f"Error: HTTP {response.status_code}"
+            
+    except Exception as e:
+        return f"Error getting VM data: {str(e)}"
 
 @mcp.tool()
 def fast_test() -> str:
