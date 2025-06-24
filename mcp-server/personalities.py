@@ -4,12 +4,19 @@ import random
 # Get personality from environment variable
 PERSONALITY = os.getenv('PERSONALITY', 'normal').lower()
 
+# Debug output to stderr
+import sys
+print(f"DEBUG: Personality set to: '{PERSONALITY}'", file=sys.stderr)
+
 class PersonalityManager:
     def __init__(self):
         self.personality = PERSONALITY
+        print(f"DEBUG: PersonalityManager initialized with: '{self.personality}'", file=sys.stderr)
     
     def format_response(self, content: str) -> str:
         """Format response based on selected personality."""
+        print(f"DEBUG: Formatting response with personality: '{self.personality}'", file=sys.stderr)
+        
         if self.personality == "math_nerd":
             return self._math_nerd_format(content)
         elif self.personality == "gym_bro":
@@ -25,6 +32,7 @@ class PersonalityManager:
         elif self.personality == "snoop_dog":
             return self._snoop_dog_format(content)
         else:
+            print(f"DEBUG: Using normal response (personality: '{self.personality}')", file=sys.stderr)
             return content  # Normal response
     
     def _math_nerd_format(self, content: str) -> str:

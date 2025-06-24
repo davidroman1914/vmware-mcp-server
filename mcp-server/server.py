@@ -114,5 +114,12 @@ def get_vm_summary_stats() -> str:
     """Get summary statistics for all VMs (counts, resource totals)."""
     return format_with_personality(monitoring.get_vm_summary_stats())
 
+# Test function to verify personality system
+@mcp.tool()
+def test_personality() -> str:
+    """Test function to verify the personality system is working."""
+    test_content = "This is a test message to verify personality formatting is working correctly."
+    return format_with_personality(test_content)
+
 if __name__ == "__main__":
     mcp.run() 
