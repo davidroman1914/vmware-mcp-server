@@ -1,522 +1,614 @@
 #!/usr/bin/env python3
 """
-VMware vCenter MCP Server using pyvmomi
-Supports VM listing, power management, and VM creation via MCP stdio protocol.
+FastMCP VMware Server - Clean and Working Version
 """
 
-import json
 import sys
+from fastmcp import FastMCP
+from fastmcp import Context
 import os
 import ssl
-from typing import Dict, Any
+import requests
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
 
-# Import our modules
-from vm_info import VMInfoManager
-from power import PowerManager
-from vm_creation import VMCreationManager
+# Create the MCP server instance
+mcp = FastMCP(name="VMware MCP Server")
 
-class VMwareMCPServer:
-    def __init__(self):
-        self.service_instance = None
-        self.vm_info = VMInfoManager()
-        self.power_manager = PowerManager()
-        self.vm_creation = VMCreationManager()
-        
-    def connect_to_vcenter(self) -> bool:
-        """Connect to vCenter using environment variables."""
-        # Check if already connected
-        if self.service_instance:
-            try:
-                # Test if connection is still alive
-                content = self.service_instance.RetrieveContent()
-                return True
-            except:
-                # Connection is dead, reset it
-                self.service_instance = None
-        
-        max_retries = 2  # Reduced retries for faster failure
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                print(f"[DEBUG] Attempting vCenter connection (attempt {retry_count + 1}/{max_retries})...", file=sys.stderr)
-                host = os.getenv('VCENTER_HOST')
-                user = os.getenv('VCENTER_USER')
-                password = os.getenv('VCENTER_PASSWORD')
-                insecure = os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
-                print(f"[DEBUG] host={host}, user={user}, insecure={insecure}", file=sys.stderr)
-                
-                if not all([host, user, password]):
-                    print("[ERROR] Missing vCenter connection environment variables.", file=sys.stderr)
-                    return False
-                
-                print("[DEBUG] Connecting to vCenter...", file=sys.stderr)
-                
-                # Add timeout to prevent hanging
-                import socket
-                socket.setdefaulttimeout(3)  # 3 second timeout
-                
-                # Create a completely disabled SSL context for non-SSL connections
-                context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-                context.verify_mode = ssl.CERT_NONE
-                context.check_hostname = False
-                
-                self.service_instance = SmartConnect(
-                    host=host,  # type: ignore
-                    user=user,  # type: ignore
-                    pwd=password,  # type: ignore
-                    sslContext=context
-                )
-                print("[DEBUG] Connected to vCenter successfully!", file=sys.stderr)
-                return True
-                
-            except Exception as e:
-                retry_count += 1
-                print(f"[ERROR] Connection attempt {retry_count} failed: {e}", file=sys.stderr)
-                if retry_count < max_retries:
-                    print(f"[DEBUG] Retrying in 2 seconds...", file=sys.stderr)
-                    import time
-                    time.sleep(2)
-                else:
-                    print(f"[ERROR] All {max_retries} connection attempts failed", file=sys.stderr)
-                    return False
-        
-        return False
+# Global service instance
+service_instance = None
+
+def connect_to_vcenter():
+    """Connect to vCenter using pyvmomi for power operations."""
+    global service_instance
     
-    def disconnect_from_vcenter(self):
-        """Disconnect from vCenter."""
-        if self.service_instance:
-            try:
-                Disconnect(self.service_instance)
-            except:
-                pass
-            self.service_instance = None
-    
-    def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle MCP initialize request."""
-        print("[DEBUG] Starting initialize handler...", file=sys.stderr)
-        # Get the tools list
-        print("[DEBUG] Getting tools list...", file=sys.stderr)
-        tools_response = self.handle_tools_list({"id": params.get("id")})
-        print("[DEBUG] Got tools list, building response...", file=sys.stderr)
-        tools = tools_response["result"]["tools"]
-        
-        response = {
-            "jsonrpc": "2.0",
-            "id": params.get("id"),
-            "result": {
-                "protocolVersion": "2024-11-05",  # Use older protocol version for compatibility
-                "capabilities": {
-                    "tools": tools
-                },
-                "serverInfo": {
-                    "name": "vmware-vcenter-mcp-server",
-                    "version": "1.0.0"
-                }
-            }
-        }
-        print("[DEBUG] Initialize handler completed", file=sys.stderr)
-        return response
-    
-    def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle MCP tools/list request."""
-        print("[DEBUG] Starting tools/list handler...", file=sys.stderr)
-        tools = [
-            {
-                "name": "list_vms",
-                "description": "List all VMs in vCenter with detailed information",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "power_on_vm",
-                "description": "Power on a VM by name",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "vm_name": {
-                            "type": "string",
-                            "description": "Name of the VM to power on"
-                        }
-                    },
-                    "required": ["vm_name"],
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "power_off_vm",
-                "description": "Power off a VM by name",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "vm_name": {
-                            "type": "string",
-                            "description": "Name of the VM to power off"
-                        }
-                    },
-                    "required": ["vm_name"],
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "create_vm_from_template",
-                "description": "Create a new VM from a template with customization",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "template_name": {
-                            "type": "string",
-                            "description": "Name of the template VM to clone from"
-                        },
-                        "vm_name": {
-                            "type": "string",
-                            "description": "Name for the new VM"
-                        },
-                        "hostname": {
-                            "type": "string",
-                            "description": "Hostname for the new VM"
-                        },
-                        "ip_address": {
-                            "type": "string",
-                            "description": "Static IP address"
-                        },
-                        "netmask": {
-                            "type": "string",
-                            "description": "Subnet mask"
-                        },
-                        "gateway": {
-                            "type": "string",
-                            "description": "Gateway IP address"
-                        },
-                        "network_name": {
-                            "type": "string",
-                            "description": "Network/port group name"
-                        },
-                        "cpu_count": {
-                            "type": "integer",
-                            "description": "Number of CPUs"
-                        },
-                        "memory_mb": {
-                            "type": "integer",
-                            "description": "Memory in MB"
-                        },
-                        "disk_size_gb": {
-                            "type": "integer",
-                            "description": "Disk size in GB"
-                        },
-                        "datastore_name": {
-                            "type": "string",
-                            "description": "Datastore name"
-                        }
-                    },
-                    "required": ["template_name", "vm_name", "network_name"],
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "create_custom_vm",
-                "description": "Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "template_name": {
-                            "type": "string",
-                            "description": "Name of the template VM to clone from"
-                        },
-                        "vm_name": {
-                            "type": "string",
-                            "description": "Name for the new VM"
-                        },
-                        "hostname": {
-                            "type": "string",
-                            "description": "Hostname for the new VM (defaults to vm_name)"
-                        },
-                        "ip_address": {
-                            "type": "string",
-                            "description": "Static IP address (optional)"
-                        },
-                        "netmask": {
-                            "type": "string",
-                            "description": "Subnet mask (defaults to 255.255.255.0)"
-                        },
-                        "gateway": {
-                            "type": "string",
-                            "description": "Gateway IP address (required if ip_address is provided)"
-                        },
-                        "network_name": {
-                            "type": "string",
-                            "description": "Network/port group name"
-                        },
-                        "cpu_count": {
-                            "type": "integer",
-                            "description": "Number of CPUs (defaults to 2)"
-                        },
-                        "memory_gb": {
-                            "type": "integer",
-                            "description": "Memory in GB (defaults to 4)"
-                        },
-                        "disk_size_gb": {
-                            "type": "integer",
-                            "description": "Disk size in GB (defaults to 50)"
-                        },
-                        "datastore_name": {
-                            "type": "string",
-                            "description": "Datastore name (optional, uses first available)"
-                        }
-                    },
-                    "required": ["template_name", "vm_name", "network_name"],
-                    "additionalProperties": False
-                }
-            }
-        ]
-        
-        response = {
-            "jsonrpc": "2.0",
-            "id": params.get("id"),
-            "result": {
-                "tools": tools
-            }
-        }
-        print("[DEBUG] Tools/list handler completed", file=sys.stderr)
-        return response
-    
-    def handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle MCP tools/call request."""
-        tool_name = params.get("name")
-        arguments = params.get("arguments", {})
-        
+    if service_instance:
         try:
-            if tool_name == "list_vms":
-                # Use pyvmomi for VM listing
-                if not self.service_instance:
-                    if not self.connect_to_vcenter():
-                        return {
-                            "jsonrpc": "2.0",
-                            "id": params.get("id"),
-                            "error": {
-                                "code": -1,
-                                "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
-                            }
-                        }
-                result = self.vm_info.fast_list_vms(self.service_instance)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            elif tool_name == "power_on_vm":
-                # Use pyvmomi for power operations
-                if not self.service_instance:
-                    if not self.connect_to_vcenter():
-                        return {
-                            "jsonrpc": "2.0",
-                            "id": params.get("id"),
-                            "error": {
-                                "code": -1,
-                                "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
-                            }
-                        }
-                vm_name = arguments.get("vm_name")
-                result = self.power_manager.power_on_vm(self.service_instance, vm_name)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            elif tool_name == "power_off_vm":
-                # Use pyvmomi for power operations
-                if not self.service_instance:
-                    if not self.connect_to_vcenter():
-                        return {
-                            "jsonrpc": "2.0",
-                            "id": params.get("id"),
-                            "error": {
-                                "code": -1,
-                                "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
-                            }
-                        }
-                vm_name = arguments.get("vm_name")
-                result = self.power_manager.power_off_vm(self.service_instance, vm_name)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            elif tool_name == "create_vm_from_template":
-                # Use pyvmomi for VM creation (advanced features)
-                if not self.service_instance:
-                    if not self.connect_to_vcenter():
-                        return {
-                            "jsonrpc": "2.0",
-                            "id": params.get("id"),
-                            "error": {
-                                "code": -1,
-                                "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
-                            }
-                        }
-                
-                result = self.vm_creation.create_custom_vm(self.service_instance, arguments)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            elif tool_name == "create_custom_vm":
-                # Use pyvmomi for VM creation with comprehensive customization
-                if not self.service_instance:
-                    if not self.connect_to_vcenter():
-                        return {
-                            "jsonrpc": "2.0",
-                            "id": params.get("id"),
-                            "error": {
-                                "code": -1,
-                                "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
-                            }
-                        }
-                
-                result = self.vm_creation.create_custom_vm(self.service_instance, arguments)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            else:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "error": {
-                        "code": -32601,
-                        "message": f"Unknown tool: {tool_name}"
-                    }
-                }
-        
-        except Exception as e:
-            return {
-                "jsonrpc": "2.0",
-                "id": params.get("id"),
-                "error": {
-                    "code": -1,
-                    "message": f"Error executing {tool_name}: {str(e)}"
-                }
-            }
+            # Test if connection is still alive
+            content = service_instance.RetrieveContent()
+            return True
+        except:
+            service_instance = None
     
-    def run(self):
-        """Run the MCP server using stdio protocol."""
-        print("[DEBUG] MCP Server starting, waiting for messages...", file=sys.stderr)
-        while True:
-            try:
-                # Read request from stdin
-                print("[DEBUG] Waiting for input from stdin...", file=sys.stderr)
-                line = sys.stdin.readline()
-                if not line:
-                    print("[DEBUG] No input received, exiting...", file=sys.stderr)
-                    break
-                
-                print(f"[DEBUG] Received input: {line.strip()}", file=sys.stderr)
-                request = json.loads(line)
-                method = request.get("method")
-                params = request.get("params", {})
-                request_id = request.get("id")
-                
-                print(f"[DEBUG] Processing method: {method}, id: {request_id}", file=sys.stderr)
-                
-                # Add the request ID to params for handlers
-                params["id"] = request_id
-                
-                # Handle different MCP methods
-                if method == "initialize":
-                    print("[DEBUG] Handling initialize request...", file=sys.stderr)
-                    response = self.handle_initialize(params)
-                elif method == "tools/list":
-                    print("[DEBUG] Handling tools/list request...", file=sys.stderr)
-                    response = self.handle_tools_list(params)
-                elif method == "tools/call":
-                    print("[DEBUG] Handling tools/call request...", file=sys.stderr)
-                    response = self.handle_tools_call(params)
-                else:
-                    print(f"[DEBUG] Unknown method: {method}", file=sys.stderr)
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "error": {
-                            "code": -32601,
-                            "message": f"Unknown method: {method}"
-                        }
-                    }
-                
-                print(f"[DEBUG] Sending response: {json.dumps(response)}", file=sys.stderr)
-                # Send response to stdout
-                print(json.dumps(response))
-                sys.stdout.flush()
-                
-            except json.JSONDecodeError as e:
-                print(f"[DEBUG] JSON decode error: {e}", file=sys.stderr)
-                continue
-            except KeyboardInterrupt:
-                print("[DEBUG] Keyboard interrupt received", file=sys.stderr)
-                break
-            except Exception as e:
-                print(f"[DEBUG] Exception in main loop: {e}", file=sys.stderr)
-                error_response = {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id") if 'request' in locals() else None,
-                    "error": {
-                        "code": -1,
-                        "message": f"Server error: {str(e)}"
-                    }
-                }
-                print(json.dumps(error_response))
-                sys.stdout.flush()
+    try:
+        host = os.getenv('VCENTER_HOST')
+        user = os.getenv('VCENTER_USER')
+        password = os.getenv('VCENTER_PASSWORD')
         
-        # Cleanup
-        print("[DEBUG] Cleaning up and disconnecting...", file=sys.stderr)
-        self.disconnect_from_vcenter()
+        if not all([host, user, password]):
+            return False
+        
+        # Add timeout to prevent hanging
+        import socket
+        socket.setdefaulttimeout(3)  # 3 second timeout
+        
+        # Create SSL context with optimizations
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context.verify_mode = ssl.CERT_NONE
+        context.check_hostname = False
+        
+        service_instance = SmartConnect(
+            host=host,
+            user=user,
+            pwd=password,
+            sslContext=context
+        )
+        return True
+        
+    except Exception as e:
+        print(f"Connection error: {e}", file=sys.stderr)
+        return False
+
+def get_vcenter_session():
+    """Get vCenter REST API session for fast operations."""
+    host = os.getenv('VCENTER_HOST')
+    user = os.getenv('VCENTER_USER')
+    password = os.getenv('VCENTER_PASSWORD')
+    
+    if not all([host, user, password]):
+        return None
+    
+    try:
+        # Create session
+        session_url = f"https://{host}/rest/com/vmware/cis/session"
+        response = requests.post(
+            session_url,
+            auth=(user, password),
+            verify=False,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            session_id = response.json()['value']
+            return session_id
+        else:
+            print(f"Failed to create session: {response.status_code}", file=sys.stderr)
+            return None
+            
+    except Exception as e:
+        print(f"Session error: {e}", file=sys.stderr)
+        return None
+
+@mcp.tool()
+def list_vms() -> str:
+    """List all VMs using fast REST API."""
+    session_id = get_vcenter_session()
+    if not session_id:
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        host = os.getenv('VCENTER_HOST')
+        headers = {'vmware-api-session-id': session_id}
+        
+        # Get VMs - this should be very fast
+        vm_url = f"https://{host}/rest/vcenter/vm"
+        response = requests.get(vm_url, headers=headers, verify=False, timeout=10)
+        
+        if response.status_code == 200:
+            vms = response.json()['value']
+            
+            if not vms:
+                return "No VMs found"
+            
+            result = f"Found {len(vms)} VMs:\n"
+            for vm in vms:
+                name = vm.get('name', 'Unknown')
+                power_state = vm.get('power_state', 'Unknown')
+                result += f"- {name} ({power_state})\n"
+            
+            return result
+        else:
+            return f"Error: Failed to get VMs (HTTP {response.status_code})"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def get_vm_details(vm_name: str) -> str:
+    """Get detailed VM information using pyvmomi including IP addresses and network info."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        vm = None
+        for v in container.view:
+            if v.name == vm_name:
+                vm = v
+                break
+        
+        if not vm:
+            return f"VM '{vm_name}' not found"
+        
+        # Basic VM info
+        memory_mb = vm.config.hardware.memoryMB if vm.config and vm.config.hardware else 0
+        memory_gb = round(memory_mb / 1024, 1) if memory_mb else 0
+        
+        details = {
+            'name': vm.name,
+            'power_state': vm.runtime.powerState,
+            'cpu_count': vm.config.hardware.numCPU if vm.config and vm.config.hardware else 0,
+            'memory_mb': memory_mb,
+            'memory_gb': memory_gb,
+            'guest_id': vm.config.guestId if vm.config else 'N/A',
+            'version': vm.config.version if vm.config else 'N/A',
+            'template': vm.config.template if vm.config else False
+        }
+        
+        # Get IP addresses and network info
+        if vm.guest and vm.guest.net:
+            ip_addresses = []
+            for nic in vm.guest.net:
+                if nic.ipConfig and nic.ipConfig.ipAddress:
+                    for ip in nic.ipConfig.ipAddress:
+                        ip_info = f"{ip.ipAddress}/{ip.prefixLength}"
+                        if ip.state == 'preferred':
+                            ip_info += " (primary)"
+                        ip_addresses.append(ip_info)
+            
+            if ip_addresses:
+                details['ip_addresses'] = ', '.join(ip_addresses)
+            else:
+                details['ip_addresses'] = 'No IP addresses found'
+        else:
+            details['ip_addresses'] = 'Network info not available'
+        
+        # Get network adapters
+        if vm.config and vm.config.hardware and vm.config.hardware.device:
+            network_adapters = []
+            for device in vm.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                    adapter_info = f"{device.deviceInfo.label}"
+                    if hasattr(device, 'backing') and device.backing:
+                        if hasattr(device.backing, 'network'):
+                            adapter_info += f" -> {device.backing.network.name}"
+                        elif hasattr(device.backing, 'port'):
+                            adapter_info += f" -> {device.backing.port.portgroupKey}"
+                    network_adapters.append(adapter_info)
+            
+            if network_adapters:
+                details['network_adapters'] = ', '.join(network_adapters)
+            else:
+                details['network_adapters'] = 'No network adapters found'
+        else:
+            details['network_adapters'] = 'Network adapters not available'
+        
+        # Get datastore info
+        if vm.datastore:
+            datastores = [ds.name for ds in vm.datastore]
+            details['datastores'] = ', '.join(datastores)
+        else:
+            details['datastores'] = 'No datastores found'
+        
+        # Get resource pool info
+        if vm.resourcePool:
+            details['resource_pool'] = vm.resourcePool.name
+        else:
+            details['resource_pool'] = 'No resource pool found'
+        
+        # Get folder location
+        if vm.parent:
+            details['folder'] = vm.parent.name
+        else:
+            details['folder'] = 'No folder found'
+        
+        # Get VMware Tools status
+        if vm.guest:
+            details['vmware_tools'] = vm.guest.toolsRunningStatus
+        else:
+            details['vmware_tools'] = 'Unknown'
+        
+        # Format the result
+        result = f"VM Details for '{vm_name}':\n"
+        result += f"- Power State: {details['power_state']}\n"
+        result += f"- CPU Count: {details['cpu_count']}\n"
+        result += f"- Memory: {details['memory_gb']} GB ({details['memory_mb']} MB)\n"
+        result += f"- Guest OS: {details['guest_id']}\n"
+        result += f"- VMware Tools: {details['vmware_tools']}\n"
+        result += f"- IP Addresses: {details['ip_addresses']}\n"
+        result += f"- Network Adapters: {details['network_adapters']}\n"
+        result += f"- Datastores: {details['datastores']}\n"
+        result += f"- Resource Pool: {details['resource_pool']}\n"
+        result += f"- Folder: {details['folder']}\n"
+        result += f"- Template: {details['template']}\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def power_on_vm(vm_name: str) -> str:
+    """Power on a VM by name."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        vm = None
+        for v in container.view:
+            if v.name == vm_name:
+                vm = v
+                break
+        
+        if not vm:
+            return f"VM '{vm_name}' not found"
+        
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
+            return f"VM '{vm_name}' is already powered on"
+        
+        task = vm.PowerOn()
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            return f"✅ Successfully powered on VM '{vm_name}'"
+        else:
+            return f"❌ Failed to power on VM '{vm_name}': {task.info.error.msg}"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def power_off_vm(vm_name: str) -> str:
+    """Power off a VM by name."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        vm = None
+        for v in container.view:
+            if v.name == vm_name:
+                vm = v
+                break
+        
+        if not vm:
+            return f"VM '{vm_name}' not found"
+        
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
+            return f"VM '{vm_name}' is already powered off"
+        
+        task = vm.PowerOff()
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            return f"✅ Successfully powered off VM '{vm_name}'"
+        else:
+            return f"❌ Failed to power off VM '{vm_name}': {task.info.error.msg}"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def list_templates() -> str:
+    """List all available templates."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        templates = []
+        for vm in container.view:
+            if vm.config.template:
+                templates.append(vm.name)
+        
+        if templates:
+            result = f"Found {len(templates)} templates:\n"
+            for template in templates:
+                result += f"- {template}\n"
+            return result
+        else:
+            return "No templates found"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def list_datastores() -> str:
+    """List all available datastores."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.Datastore], True
+        )
+        
+        datastores = []
+        for ds in container.view:
+            datastores.append({
+                'name': ds.name,
+                'type': ds.summary.type,
+                'capacity_gb': round(ds.summary.capacity / (1024**3), 1),
+                'free_gb': round(ds.summary.freeSpace / (1024**3), 1)
+            })
+        
+        if datastores:
+            result = f"Found {len(datastores)} datastores:\n"
+            for ds in datastores:
+                result += f"- {ds['name']} ({ds['type']}, {ds['free_gb']}GB free of {ds['capacity_gb']}GB)\n"
+            return result
+        else:
+            return "No datastores found"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def list_networks() -> str:
+    """List all available networks."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
+        )
+        
+        networks = []
+        for net in container.view:
+            if isinstance(net, vim.dvs.DistributedVirtualPortgroup):
+                networks.append({
+                    'name': net.name,
+                    'type': 'Distributed Port Group',
+                    'vswitch': net.config.distributedVirtualSwitch.name
+                })
+            else:
+                networks.append({
+                    'name': net.name,
+                    'type': 'Standard Network',
+                    'vswitch': 'N/A'
+                })
+        
+        if networks:
+            result = f"Found {len(networks)} networks:\n"
+            for net in networks:
+                result += f"- {net['name']} ({net['type']}, vSwitch: {net['vswitch']})\n"
+            return result
+        else:
+            return "No networks found"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+# Helper functions for VM creation
+def find_template(service_instance, template_name):
+    """Find template by name."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        for vm in container.view:
+            if vm.config.template and vm.name == template_name:
+                return vm
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+def find_datastore(service_instance, datastore_name):
+    """Find datastore by name."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.Datastore], True
+        )
+        
+        for ds in container.view:
+            if ds.name == datastore_name:
+                return ds
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+def find_network(service_instance, network_name):
+    """Find network by name."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.dvs.DistributedVirtualPortgroup, vim.Network], True
+        )
+        
+        for net in container.view:
+            if net.name == network_name:
+                return net
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+def find_resource_pool(service_instance):
+    """Find the default resource pool."""
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.ClusterComputeResource], True
+        )
+        
+        for cluster in container.view:
+            if cluster.resourcePool:
+                return cluster.resourcePool
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+@mcp.tool()
+def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "10.60.132.105", netmask: str = "255.255.255.0", gateway: str = "10.60.132.1", memory_gb: int = 4, cpu_count: int = 2, disk_gb: int = 50, network_name: str = "PROD VMs", datastore_name: str = "ova-inf-vh03-ds-1") -> str:
+    """Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default."""
+    if not connect_to_vcenter():
+        return "Error: Could not connect to vCenter"
+    
+    try:
+        # Find template
+        template = find_template(service_instance, template_name)
+        if not template:
+            return f"Template '{template_name}' not found. Use list_templates() to see available templates."
+        
+        # Find datastore
+        datastore = find_datastore(service_instance, datastore_name)
+        if not datastore:
+            return f"Datastore '{datastore_name}' not found. Use list_datastores() to see available datastores."
+        
+        # Find network
+        network = find_network(service_instance, network_name)
+        if not network:
+            return f"Network '{network_name}' not found. Use list_networks() to see available networks."
+        
+        # Find resource pool
+        resource_pool = find_resource_pool(service_instance)
+        if not resource_pool:
+            return "Resource pool not found."
+        
+        # Create relocation spec with both datastore and resource pool
+        relospec = vim.vm.RelocateSpec()
+        relospec.datastore = datastore
+        relospec.pool = resource_pool
+        
+        # Create clone spec
+        clone_spec = vim.vm.CloneSpec()
+        clone_spec.location = relospec
+        clone_spec.powerOn = False  # Keep powered off
+        clone_spec.template = False
+        
+        # Create config spec for hardware customizations
+        config_spec = vim.vm.ConfigSpec()
+        config_spec.memoryMB = memory_gb * 1024  # Convert GB to MB
+        config_spec.numCPUs = cpu_count
+        
+        # Disk customization - resize the first disk
+        for device in template.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualDisk):
+                disk_spec = vim.vm.device.VirtualDeviceSpec()
+                disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                disk_spec.device = device
+                disk_spec.device.capacityInKB = disk_gb * 1024 * 1024  # Convert GB to KB
+                config_spec.deviceChange = [disk_spec]
+                break
+        
+        # Network customization
+        if network:
+            # Find existing network adapter and update it
+            for device in template.config.hardware.device:
+                if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                    nic_spec = vim.vm.device.VirtualDeviceSpec()
+                    nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
+                    nic_spec.device = device
+                    
+                    if isinstance(network, vim.dvs.DistributedVirtualPortgroup):
+                        nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
+                        nic_spec.device.backing.port = vim.dvs.PortConnection()
+                        nic_spec.device.backing.port.portgroupKey = network.key
+                        nic_spec.device.backing.port.switchUuid = network.config.distributedVirtualSwitch.uuid
+                    else:
+                        nic_spec.device.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo()
+                        nic_spec.device.backing.network = network
+                        nic_spec.device.backing.deviceName = network.name
+                    
+                    # Add to device changes
+                    if config_spec.deviceChange:
+                        config_spec.deviceChange.append(nic_spec)
+                    else:
+                        config_spec.deviceChange = [nic_spec]
+                    break
+        
+        # IP customization
+        customizationspec = vim.vm.customization.Specification()
+        
+        # Identity
+        identity = vim.vm.customization.LinuxPrep()
+        identity.hostName = vim.vm.customization.FixedName(name=new_vm_name)
+        identity.domain = "local"
+        customizationspec.identity = identity
+        
+        # Network interface with IP
+        adapter_mapping = vim.vm.customization.AdapterMapping()
+        adapter_mapping.adapter = vim.vm.customization.IPSettings()
+        adapter_mapping.adapter.ip = vim.vm.customization.FixedIp(ipAddress=ip_address)
+        adapter_mapping.adapter.subnetMask = netmask
+        adapter_mapping.adapter.gateway = [gateway]
+        adapter_mapping.adapter.dnsServerList = ["8.8.8.8", "8.8.4.4"]
+        
+        customizationspec.nicSettingMap = [adapter_mapping]
+        customizationspec.globalIPSettings = vim.vm.customization.GlobalIPSettings()
+        customizationspec.globalIPSettings.dnsServerList = ["8.8.8.8", "8.8.4.4"]
+        
+        clone_spec.customization = customizationspec
+        
+        # Attach config spec to clone spec
+        clone_spec.config = config_spec
+        
+        # Clone the VM
+        task = template.Clone(folder=template.parent, name=new_vm_name, spec=clone_spec)
+        
+        # Wait for task to complete
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            new_vm = task.info.result
+            result = f"✅ Successfully created VM '{new_vm_name}' (powered off)"
+            result += f"\n- Template: {template_name}"
+            result += f"\n- Memory: {memory_gb} GB"
+            result += f"\n- CPU: {cpu_count} cores"
+            result += f"\n- Disk: {disk_gb} GB"
+            result += f"\n- Network: {network_name}"
+            result += f"\n- Datastore: {datastore.name}"
+            result += f"\n- IP Address: {ip_address}"
+            result += f"\n- Power State: Powered off"
+            return result
+        else:
+            return f"❌ Failed to create VM: {task.info.error.msg}"
+            
+    except Exception as e:
+        return f"Error: {e}"
 
 if __name__ == "__main__":
-    server = VMwareMCPServer()
-    server.run() 
+    mcp.run() 
