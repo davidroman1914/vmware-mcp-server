@@ -5,9 +5,9 @@ Clean, modular FastMCP server for VMware vCenter management
 """
 
 from fastmcp import FastMCP
-from . import vm_info
-from . import power
-from . import vm_creation
+import vm_info
+import power
+import vm_creation
 
 # Create the MCP server instance
 mcp = FastMCP(name="VMware MCP Server")

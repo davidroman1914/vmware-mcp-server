@@ -7,12 +7,12 @@ Handles VM listing and detailed information retrieval
 import os
 import requests
 from pyVmomi import vim
-from .connection import get_service_instance, get_vcenter_session
+import connection
 
 
 def list_vms() -> str:
     """List all VMs using fast REST API."""
-    session_id = get_vcenter_session()
+    session_id = connection.get_vcenter_session()
     if not session_id:
         return "Error: Could not connect to vCenter"
     
@@ -46,7 +46,7 @@ def list_vms() -> str:
 
 def get_vm_details(vm_name: str) -> str:
     """Get detailed VM information using pyvmomi including IP addresses and network info."""
-    service_instance = get_service_instance()
+    service_instance = connection.get_service_instance()
     if not service_instance:
         return "Error: Could not connect to vCenter"
     
@@ -165,7 +165,7 @@ def get_vm_details(vm_name: str) -> str:
 
 def list_templates() -> str:
     """List all available templates."""
-    service_instance = get_service_instance()
+    service_instance = connection.get_service_instance()
     if not service_instance:
         return "Error: Could not connect to vCenter"
     
@@ -194,7 +194,7 @@ def list_templates() -> str:
 
 def list_datastores() -> str:
     """List all available datastores."""
-    service_instance = get_service_instance()
+    service_instance = connection.get_service_instance()
     if not service_instance:
         return "Error: Could not connect to vCenter"
     
@@ -227,7 +227,7 @@ def list_datastores() -> str:
 
 def list_networks() -> str:
     """List all available networks."""
-    service_instance = get_service_instance()
+    service_instance = connection.get_service_instance()
     if not service_instance:
         return "Error: Could not connect to vCenter"
     

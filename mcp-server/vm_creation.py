@@ -5,7 +5,7 @@ Handles VM creation from templates with customization
 """
 
 from pyVmomi import vim
-from .connection import get_service_instance
+import connection
 
 
 def find_template(service_instance, template_name):
@@ -177,7 +177,7 @@ def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "19
                     memory_gb: int = 4, cpu_count: int = 2, disk_gb: int = 50, 
                     network_name: str = "VM Network", datastore_name: str = "datastore1") -> str:
     """Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default."""
-    service_instance = get_service_instance()
+    service_instance = connection.get_service_instance()
     if not service_instance:
         return "Error: Could not connect to vCenter"
     
