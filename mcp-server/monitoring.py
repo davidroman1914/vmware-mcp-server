@@ -57,7 +57,6 @@ def get_vm_performance(vm_name: str) -> str:
             return f"No performance data available for VM '{vm_name}'"
         
         # Parse the results
-        metrics = {}
         cpu_metrics = {}
         other_metrics = {}
         
@@ -84,30 +83,39 @@ def get_vm_performance(vm_name: str) -> str:
             else:
                 other_metrics[f"{metric_name} ({instance})"] = value
         
+        # Get VM CPU configuration
+        cpu_count = 0
+        if vm.config and vm.config.hardware:
+            cpu_count = vm.config.hardware.numCPU
+        
         # Format the results
         result_text = f"Performance Metrics for VM '{vm_name}':\n"
         result_text += f"- Power State: {vm.runtime.powerState}\n"
         result_text += f"- Guest OS: {vm.guest.guestFullName if vm.guest else 'Unknown'}\n"
         result_text += f"- VMware Tools: {vm.guest.toolsRunningStatus if vm.guest else 'Unknown'}\n"
+        result_text += f"- CPU Cores: {cpu_count}\n"
         
-        # Get VM CPU configuration
-        if vm.config and vm.config.hardware:
-            cpu_count = vm.config.hardware.numCPU
-            result_text += f"- CPU Cores: {cpu_count}\n"
+        result_text += "\n=== CPU USAGE ===\n"
         
-        result_text += "\n=== CPU USAGE (per core) ===\n"
-        
-        # Format CPU metrics
+        # Format CPU metrics in a user-friendly way
         total_cpu = 0
         for instance, value in cpu_metrics.items():
             if instance == "":  # Overall CPU
-                result_text += f"- Overall CPU: {value:.1f}% ({value/cpu_count:.1f}% per core avg)\n"
                 total_cpu = value
+                if cpu_count > 0:
+                    avg_per_core = value / cpu_count
+                    result_text += f"- Overall CPU: {value:.1f}% (VMware's confusing way)\n"
+                    result_text += f"- Average per Core: {avg_per_core:.1f}% (normal way)\n"
+                    result_text += f"- CPU Utilization: {min(avg_per_core, 100):.1f}% (capped at 100%)\n"
+                else:
+                    result_text += f"- Overall CPU: {value:.1f}%\n"
             else:
-                result_text += f"- CPU {instance}: {value:.1f}%\n"
+                # For individual CPU instances, show both VMware's way and normal way
+                result_text += f"- CPU {instance}: {value:.1f}% (VMware) / {min(value, 100):.1f}% (normal)\n"
         
-        if cpu_metrics:
-            result_text += f"- Total CPU Usage: {total_cpu:.1f}% across all cores\n"
+        if cpu_metrics and cpu_count > 0:
+            result_text += f"\n💡 **Explanation:** VMware shows {total_cpu:.0f}% because it adds up all cores.\n"
+            result_text += f"   In reality, your VM is using {min(total_cpu/cpu_count, 100):.1f}% of its allocated CPU.\n"
         
         result_text += "\n=== OTHER METRICS ===\n"
         for metric_name, value in other_metrics.items():
@@ -119,8 +127,8 @@ def get_vm_performance(vm_name: str) -> str:
         return f"Error getting performance data: {e}"
 
 
-def get_host_performance(host_name: str = None) -> str:
-    """Get performance metrics for hosts."""
+def get_host_performance(host_name: str) -> str:
+    """Get detailed performance metrics for a specific host."""
     service_instance = connection.get_service_instance()
     if not service_instance:
         return "Error: Could not connect to vCenter"
@@ -131,38 +139,110 @@ def get_host_performance(host_name: str = None) -> str:
             content.rootFolder, [vim.HostSystem], True
         )
         
-        hosts = []
-        for host in container.view:
-            if host_name is None or host.name == host_name:
-                hosts.append(host)
+        host = None
+        for h in container.view:
+            if h.name == host_name:
+                host = h
+                break
         
-        if not hosts:
-            return f"Host '{host_name}' not found" if host_name else "No hosts found"
+        if not host:
+            return f"Host '{host_name}' not found"
         
-        result_text = f"Host Performance Metrics:\n\n"
+        # Get performance manager
+        perf_manager = content.perfManager
         
-        for host in hosts:
-            result_text += f"Host: {host.name}\n"
-            result_text += f"- Connection State: {host.runtime.connectionState}\n"
-            result_text += f"- Power State: {host.runtime.powerState}\n"
+        # Define metrics we want to collect
+        metric_ids = [
+            vim.PerformanceManager.MetricId(counterId=6, instance="*"),    # CPU usage
+            vim.PerformanceManager.MetricId(counterId=24, instance="*"),   # Memory usage
+            vim.PerformanceManager.MetricId(counterId=110, instance="*"),  # Disk read rate
+            vim.PerformanceManager.MetricId(counterId=111, instance="*"),  # Disk write rate
+            vim.PerformanceManager.MetricId(counterId=104, instance="*"),  # Network received
+            vim.PerformanceManager.MetricId(counterId=105, instance="*"),  # Network transmitted
+        ]
+        
+        # Create query specification
+        query = vim.PerformanceManager.QuerySpec(
+            entity=host,
+            metricId=metric_ids,
+            intervalId=20,  # 20-second intervals
+            maxSample=1     # Get latest sample
+        )
+        
+        # Query performance data
+        result = perf_manager.QueryPerf([query])
+        
+        if not result:
+            return f"No performance data available for host '{host_name}'"
+        
+        # Parse the results
+        cpu_metrics = {}
+        other_metrics = {}
+        
+        for sample in result[0].value:
+            counter_id = sample.id.counterId
+            instance = sample.id.instance
+            value = sample.value[0] if sample.value else 0
             
-            # Get hardware info
-            if host.hardware:
-                result_text += f"- CPU Model: {host.hardware.cpuPkg[0].description if host.hardware.cpuPkg else 'Unknown'}\n"
-                result_text += f"- CPU Cores: {host.hardware.cpuInfo.numCpuCores}\n"
-                result_text += f"- Memory: {host.hardware.memorySize // (1024**3)} GB\n"
+            # Map counter IDs to readable names
+            counter_names = {
+                6: "CPU Usage",
+                24: "Memory Usage (MB)",
+                110: "Disk Read (KB/s)",
+                111: "Disk Write (KB/s)",
+                104: "Network Received (KB/s)",
+                105: "Network Transmitted (KB/s)"
+            }
             
-            # Get resource usage
-            if host.runtime.healthSystemRuntime:
-                health = host.runtime.healthSystemRuntime
-                result_text += f"- System Health: {health.systemHealth}\n"
+            metric_name = counter_names.get(counter_id, f"Counter {counter_id}")
             
-            result_text += "\n"
+            # Separate CPU metrics for better formatting
+            if counter_id == 6:  # CPU
+                cpu_metrics[instance] = value
+            else:
+                other_metrics[f"{metric_name} ({instance})"] = value
+        
+        # Get host CPU configuration
+        cpu_count = 0
+        if host.hardware and host.hardware.cpuInfo:
+            cpu_count = host.hardware.cpuInfo.numCpuCores
+        
+        # Format the results
+        result_text = f"Performance Metrics for Host '{host_name}':\n"
+        result_text += f"- Connection State: {host.runtime.connectionState}\n"
+        result_text += f"- Power State: {host.runtime.powerState}\n"
+        result_text += f"- CPU Cores: {cpu_count}\n"
+        
+        result_text += "\n=== CPU USAGE ===\n"
+        
+        # Format CPU metrics in a user-friendly way
+        total_cpu = 0
+        for instance, value in cpu_metrics.items():
+            if instance == "":  # Overall CPU
+                total_cpu = value
+                if cpu_count > 0:
+                    avg_per_core = value / cpu_count
+                    result_text += f"- Overall CPU: {value:.1f}% (VMware's confusing way)\n"
+                    result_text += f"- Average per Core: {avg_per_core:.1f}% (normal way)\n"
+                    result_text += f"- CPU Utilization: {min(avg_per_core, 100):.1f}% (capped at 100%)\n"
+                else:
+                    result_text += f"- Overall CPU: {value:.1f}%\n"
+            else:
+                # For individual CPU instances, show both VMware's way and normal way
+                result_text += f"- CPU {instance}: {value:.1f}% (VMware) / {min(value, 100):.1f}% (normal)\n"
+        
+        if cpu_metrics and cpu_count > 0:
+            result_text += f"\n💡 **Explanation:** VMware shows {total_cpu:.0f}% because it adds up all cores.\n"
+            result_text += f"   In reality, your host is using {min(total_cpu/cpu_count, 100):.1f}% of its total CPU.\n"
+        
+        result_text += "\n=== OTHER METRICS ===\n"
+        for metric_name, value in other_metrics.items():
+            result_text += f"- {metric_name}: {value}\n"
         
         return result_text
         
     except Exception as e:
-        return f"Error getting host performance: {e}"
+        return f"Error getting performance data: {e}"
 
 
 def list_performance_counters() -> str:
