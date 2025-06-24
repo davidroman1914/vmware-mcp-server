@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 import vm_info
 import power
 import vm_creation
+import monitoring
 
 # Create the MCP server instance
 mcp = FastMCP(name="VMware MCP Server")
@@ -68,6 +69,27 @@ def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "19
         network_name=network_name,
         datastore_name=datastore_name
     )
+
+# Monitoring Tools
+@mcp.tool()
+def get_vm_performance(vm_name: str) -> str:
+    """Get detailed performance metrics for a specific VM (CPU, memory, disk, network)."""
+    return monitoring.get_vm_performance(vm_name)
+
+@mcp.tool()
+def get_host_performance(host_name: str = None) -> str:
+    """Get performance metrics for hosts (hardware info, health status)."""
+    return monitoring.get_host_performance(host_name)
+
+@mcp.tool()
+def list_performance_counters() -> str:
+    """List all available performance counters in vCenter."""
+    return monitoring.list_performance_counters()
+
+@mcp.tool()
+def get_vm_summary_stats() -> str:
+    """Get summary statistics for all VMs (counts, resource totals)."""
+    return monitoring.get_vm_summary_stats()
 
 if __name__ == "__main__":
     mcp.run() 
