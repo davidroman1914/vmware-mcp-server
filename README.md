@@ -1,65 +1,14 @@
 # VMware MCP Server
 
-A clean, modular FastMCP server for VMware vCenter management with personality-driven responses.
+A clean, focused Model Context Protocol (MCP) server for VMware vCenter management using pyvmomi.
 
-## Features
+## 🚀 Features
 
 - **VM Management**: List, create, power on/off VMs
 - **Host Monitoring**: Physical host information and health
 - **Performance Metrics**: CPU, memory, disk, network monitoring
 - **Fast REST API**: Quick VM listing and operations
-- **Personality System**: Fun, engaging response styles
-
-## Personality System 🎭
-
-The server supports multiple personality modes that make monitoring more entertaining:
-
-### Available Personalities
-
-Set the `PERSONALITY` environment variable to choose your style:
-
-- **`normal`** - Standard technical responses
-- **`math_nerd`** 🤓 - Technical, precise, scientific analysis
-- **`gym_bro`** 💪 - Enthusiastic, motivational, fitness-focused
-- **`comedian`** 🎭 - Jokes, puns, stand-up comedy style
-- **`rock_star`** 🎸 - Rock & roll attitude, guitar riffs
-- **`emotional_support`** 🐕 - Comforting, encouraging, warm support
-- **`skynet`** 🤖 - Superior, calculating, slightly threatening AI
-- **`snoop_dog`** 🎤 - Laid-back, cool, hip-hop style
-
-### Example Usage
-
-```bash
-# Set personality in environment
-export PERSONALITY=skynet
-
-# Or in docker-compose.yml
-environment:
-  - PERSONALITY=emotional_support
-```
-
-### Example Responses
-
-**Skynet Mode:**
-```
-🤖 I am Skynet. Your VM infrastructure is under my surveillance.
-🤖 Target VM acquired. Performance metrics: Acceptable.
-🤖 Your VM will not be terminated. Yet.
-```
-
-**Emotional Support Mode:**
-```
-🐕 *tail wag* Hello human! Let me check on your VM for you!
-🐕 *gentle nuzzle* Everything is going to be okay! Your VM is working perfectly!
-🐕 *brings you a ball* You deserve a treat for such good VM management!
-```
-
-**Gym Bro Mode:**
-```
-💪 YO BRO! Let's check out this VM performance!
-💪 BRO! Your infrastructure is absolutely JACKED!
-💪 BRO! That's what I'm talking about! ABSOLUTELY LEGENDARY!
-```
+- **Modular Design**: Clean, maintainable code structure
 
 ## Installation
 

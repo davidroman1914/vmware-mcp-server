@@ -10,7 +10,6 @@ import power
 import vm_creation
 import monitoring
 import host_info
-from personalities import format_with_personality
 
 # Create the MCP server instance
 mcp = FastMCP(name="VMware MCP Server")
@@ -19,38 +18,38 @@ mcp = FastMCP(name="VMware MCP Server")
 @mcp.tool()
 def list_vms() -> str:
     """List all VMs using fast REST API."""
-    return format_with_personality(vm_info.list_vms())
+    return vm_info.list_vms()
 
 @mcp.tool()
 def get_vm_details(vm_name: str) -> str:
     """Get detailed VM information including IP addresses and network info."""
-    return format_with_personality(vm_info.get_vm_details(vm_name))
+    return vm_info.get_vm_details(vm_name)
 
 @mcp.tool()
 def list_templates() -> str:
     """List all available templates."""
-    return format_with_personality(vm_info.list_templates())
+    return vm_info.list_templates()
 
 @mcp.tool()
 def list_datastores() -> str:
     """List all available datastores."""
-    return format_with_personality(vm_info.list_datastores())
+    return vm_info.list_datastores()
 
 @mcp.tool()
 def list_networks() -> str:
     """List all available networks."""
-    return format_with_personality(vm_info.list_networks())
+    return vm_info.list_networks()
 
 # Power Management Tools
 @mcp.tool()
 def power_on_vm(vm_name: str) -> str:
     """Power on a VM by name."""
-    return format_with_personality(power.power_on_vm(vm_name))
+    return power.power_on_vm(vm_name)
 
 @mcp.tool()
 def power_off_vm(vm_name: str) -> str:
     """Power off a VM by name."""
-    return format_with_personality(power.power_off_vm(vm_name))
+    return power.power_off_vm(vm_name)
 
 # VM Creation Tools
 @mcp.tool()
@@ -59,7 +58,7 @@ def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "19
                     memory_gb: int = 4, cpu_count: int = 2, disk_gb: int = 50, 
                     network_name: str = "VM Network", datastore_name: str = "datastore1") -> str:
     """Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default."""
-    return format_with_personality(vm_creation.create_vm_custom(
+    return vm_creation.create_vm_custom(
         template_name=template_name,
         new_vm_name=new_vm_name,
         ip_address=ip_address,
@@ -70,56 +69,49 @@ def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "19
         disk_gb=disk_gb,
         network_name=network_name,
         datastore_name=datastore_name
-    ))
+    )
 
 # Host Information Tools
 @mcp.tool()
 def list_hosts() -> str:
     """List all physical hosts with basic information."""
-    return format_with_personality(host_info.list_hosts())
+    return host_info.list_hosts()
 
 @mcp.tool()
 def get_host_details(host_name: str) -> str:
     """Get detailed information about a specific physical host (hardware, network, storage, VMs)."""
-    return format_with_personality(host_info.get_host_details(host_name))
+    return host_info.get_host_details(host_name)
 
 @mcp.tool()
 def get_host_performance_metrics(host_name: str) -> str:
     """Get detailed performance metrics for a specific host (CPU, memory, disk, network)."""
-    return format_with_personality(host_info.get_host_performance_metrics(host_name))
+    return host_info.get_host_performance_metrics(host_name)
 
 @mcp.tool()
 def get_host_hardware_health(host_name: str) -> str:
     """Get hardware health information for a specific host (sensors, system health)."""
-    return format_with_personality(host_info.get_host_hardware_health(host_name))
+    return host_info.get_host_hardware_health(host_name)
 
 # Monitoring Tools
 @mcp.tool()
 def get_vm_performance(vm_name: str) -> str:
     """Get detailed performance metrics for a specific VM (CPU, memory, disk, network)."""
-    return format_with_personality(monitoring.get_vm_performance(vm_name))
+    return monitoring.get_vm_performance(vm_name)
 
 @mcp.tool()
 def get_host_performance(host_name: str = None) -> str:
     """Get performance metrics for hosts (hardware info, health status)."""
-    return format_with_personality(monitoring.get_host_performance(host_name))
+    return monitoring.get_host_performance(host_name)
 
 @mcp.tool()
 def list_performance_counters() -> str:
     """List all available performance counters in vCenter."""
-    return format_with_personality(monitoring.list_performance_counters())
+    return monitoring.list_performance_counters()
 
 @mcp.tool()
 def get_vm_summary_stats() -> str:
     """Get summary statistics for all VMs (counts, resource totals)."""
-    return format_with_personality(monitoring.get_vm_summary_stats())
-
-# Test function to verify personality system
-@mcp.tool()
-def test_personality() -> str:
-    """Test function to verify the personality system is working."""
-    test_content = "This is a test message to verify personality formatting is working correctly."
-    return format_with_personality(test_content)
+    return monitoring.get_vm_summary_stats()
 
 if __name__ == "__main__":
     mcp.run() 
