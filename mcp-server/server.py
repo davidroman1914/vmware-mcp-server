@@ -10,19 +10,7 @@ import power
 import vm_creation
 import monitoring
 import host_info
-import json
-import sys
-from typing import Dict, Any, List, Optional
-from pyVmomi import vim
-import ssl
 from personalities import format_with_personality
-
-from connection import get_service_instance
-from vm_info import get_vm_list, get_vm_details, get_vm_summary_stats
-from power import power_on_vm, power_off_vm, restart_vm, shutdown_vm
-from vm_creation import create_vm_from_template, create_vm_advanced
-from monitoring import get_vm_performance, get_host_performance, get_vm_summary_stats
-from host_info import get_host_list, get_host_details
 
 # Create the MCP server instance
 mcp = FastMCP(name="VMware MCP Server")
