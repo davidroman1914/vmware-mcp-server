@@ -9,6 +9,7 @@ import vm_info
 import power
 import vm_creation
 import monitoring
+import host_info
 
 # Create the MCP server instance
 mcp = FastMCP(name="VMware MCP Server")
@@ -69,6 +70,27 @@ def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "19
         network_name=network_name,
         datastore_name=datastore_name
     )
+
+# Host Information Tools
+@mcp.tool()
+def list_hosts() -> str:
+    """List all physical hosts with basic information."""
+    return host_info.list_hosts()
+
+@mcp.tool()
+def get_host_details(host_name: str) -> str:
+    """Get detailed information about a specific physical host (hardware, network, storage, VMs)."""
+    return host_info.get_host_details(host_name)
+
+@mcp.tool()
+def get_host_performance_metrics(host_name: str) -> str:
+    """Get detailed performance metrics for a specific host (CPU, memory, disk, network)."""
+    return host_info.get_host_performance_metrics(host_name)
+
+@mcp.tool()
+def get_host_hardware_health(host_name: str) -> str:
+    """Get hardware health information for a specific host (sensors, system health)."""
+    return host_info.get_host_hardware_health(host_name)
 
 # Monitoring Tools
 @mcp.tool()
