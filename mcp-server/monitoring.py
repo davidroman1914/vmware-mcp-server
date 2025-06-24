@@ -58,6 +58,9 @@ def get_vm_performance(vm_name: str) -> str:
         
         # Parse the results
         metrics = {}
+        cpu_metrics = {}
+        other_metrics = {}
+        
         for sample in result[0].value:
             counter_id = sample.id.counterId
             instance = sample.id.instance
@@ -65,7 +68,7 @@ def get_vm_performance(vm_name: str) -> str:
             
             # Map counter IDs to readable names
             counter_names = {
-                6: "CPU Usage (%)",
+                6: "CPU Usage",
                 24: "Memory Usage (MB)",
                 110: "Disk Read (KB/s)",
                 111: "Disk Write (KB/s)",
@@ -74,15 +77,40 @@ def get_vm_performance(vm_name: str) -> str:
             }
             
             metric_name = counter_names.get(counter_id, f"Counter {counter_id}")
-            metrics[f"{metric_name} ({instance})"] = value
+            
+            # Separate CPU metrics for better formatting
+            if counter_id == 6:  # CPU
+                cpu_metrics[instance] = value
+            else:
+                other_metrics[f"{metric_name} ({instance})"] = value
         
         # Format the results
         result_text = f"Performance Metrics for VM '{vm_name}':\n"
         result_text += f"- Power State: {vm.runtime.powerState}\n"
         result_text += f"- Guest OS: {vm.guest.guestFullName if vm.guest else 'Unknown'}\n"
-        result_text += f"- VMware Tools: {vm.guest.toolsRunningStatus if vm.guest else 'Unknown'}\n\n"
+        result_text += f"- VMware Tools: {vm.guest.toolsRunningStatus if vm.guest else 'Unknown'}\n"
         
-        for metric_name, value in metrics.items():
+        # Get VM CPU configuration
+        if vm.config and vm.config.hardware:
+            cpu_count = vm.config.hardware.numCPU
+            result_text += f"- CPU Cores: {cpu_count}\n"
+        
+        result_text += "\n=== CPU USAGE (per core) ===\n"
+        
+        # Format CPU metrics
+        total_cpu = 0
+        for instance, value in cpu_metrics.items():
+            if instance == "":  # Overall CPU
+                result_text += f"- Overall CPU: {value:.1f}% ({value/cpu_count:.1f}% per core avg)\n"
+                total_cpu = value
+            else:
+                result_text += f"- CPU {instance}: {value:.1f}%\n"
+        
+        if cpu_metrics:
+            result_text += f"- Total CPU Usage: {total_cpu:.1f}% across all cores\n"
+        
+        result_text += "\n=== OTHER METRICS ===\n"
+        for metric_name, value in other_metrics.items():
             result_text += f"- {metric_name}: {value}\n"
         
         return result_text

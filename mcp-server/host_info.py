@@ -237,7 +237,9 @@ def get_host_performance_metrics(host_name: str) -> str:
             return f"No performance data available for host '{host_name}'"
         
         # Parse the results
-        metrics = {}
+        cpu_metrics = {}
+        other_metrics = {}
+        
         for sample in result[0].value:
             counter_id = sample.id.counterId
             instance = sample.id.instance
@@ -245,7 +247,7 @@ def get_host_performance_metrics(host_name: str) -> str:
             
             # Map counter IDs to readable names
             counter_names = {
-                1: "CPU Usage (%)",
+                1: "CPU Usage",
                 4: "Memory Usage (MB)",
                 110: "Disk Read (KB/s)",
                 111: "Disk Write (KB/s)",
@@ -254,12 +256,43 @@ def get_host_performance_metrics(host_name: str) -> str:
             }
             
             metric_name = counter_names.get(counter_id, f"Counter {counter_id}")
-            metrics[f"{metric_name} ({instance})"] = value
+            
+            # Separate CPU metrics for better formatting
+            if counter_id == 1:  # CPU
+                cpu_metrics[instance] = value
+            else:
+                other_metrics[f"{metric_name} ({instance})"] = value
+        
+        # Get host CPU configuration
+        cpu_cores = 0
+        if host.hardware:
+            cpu_cores = host.hardware.cpuInfo.numCpuCores
         
         # Format the results
-        result_text = f"Performance Metrics for Host '{host_name}':\n\n"
+        result_text = f"Performance Metrics for Host '{host_name}':\n"
+        result_text += f"- CPU Cores: {cpu_cores}\n"
+        result_text += f"- Connection State: {host.runtime.connectionState}\n"
+        result_text += f"- Power State: {host.runtime.powerState}\n\n"
         
-        for metric_name, value in metrics.items():
+        result_text += "=== CPU USAGE (per core) ===\n"
+        
+        # Format CPU metrics
+        total_cpu = 0
+        for instance, value in cpu_metrics.items():
+            if instance == "":  # Overall CPU
+                if cpu_cores > 0:
+                    result_text += f"- Overall CPU: {value:.1f}% ({value/cpu_cores:.1f}% per core avg)\n"
+                else:
+                    result_text += f"- Overall CPU: {value:.1f}%\n"
+                total_cpu = value
+            else:
+                result_text += f"- CPU {instance}: {value:.1f}%\n"
+        
+        if cpu_metrics:
+            result_text += f"- Total CPU Usage: {total_cpu:.1f}% across all cores\n"
+        
+        result_text += "\n=== OTHER METRICS ===\n"
+        for metric_name, value in other_metrics.items():
             result_text += f"- {metric_name}: {value}\n"
         
         return result_text
