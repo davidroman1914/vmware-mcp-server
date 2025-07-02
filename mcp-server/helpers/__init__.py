@@ -20,14 +20,12 @@ from .vm_parser import (
     group_vms_by_attributes
 )
 
-# Legacy imports for backward compatibility
-from .parser import (
-    parse_maintenance_instructions_smart,
-    parse_maintenance_instructions_spacy,
-    parse_maintenance_instructions_with_fallback,
-    parse_maintenance_instructions_manual,
-    categorize_vms_smart
-)
+# Legacy aliases for backward compatibility
+parse_maintenance_instructions_smart = parse_power_instructions_smart
+parse_maintenance_instructions_spacy = parse_power_instructions_spacy
+parse_maintenance_instructions_with_fallback = parse_power_instructions
+parse_maintenance_instructions_manual = parse_power_instructions_manual
+categorize_vms_smart = categorize_vms_by_power
 
 __all__ = [
     # Power parser functions
@@ -44,7 +42,7 @@ __all__ = [
     'match_vms_by_pattern',
     'group_vms_by_attributes',
     
-    # Legacy functions (deprecated)
+    # Legacy aliases (deprecated but maintained for compatibility)
     'parse_maintenance_instructions_smart',
     'parse_maintenance_instructions_spacy',
     'parse_maintenance_instructions_with_fallback',
