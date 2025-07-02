@@ -80,7 +80,17 @@ def find_vms_by_category() -> Dict[str, Any]:
     """Find VMs and categorize them based on the maintenance instructions."""
     try:
         all_vms = vm_info.list_vms()
-        vm_names = [line.split('Name:')[1].strip() for line in all_vms.split('\n') if 'Name:' in line]
+        
+        # Parse VM names from the actual vCenter response format
+        vm_names = []
+        lines = all_vms.split('\n')
+        for line in lines:
+            # Look for numbered list items with bold VM names: "1. **vm-name** (POWERED_ON)"
+            if line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '11.', '12.', '13.', '14.', '15.')):
+                if '**' in line:
+                    # Extract VM name from bold format: "**ova-inf-k8s-worker-uat-01**"
+                    vm_name = line.split('**')[1].split('**')[0]
+                    vm_names.append(vm_name)
         
         parsed = parse_maintenance_instructions()
         if 'error' in parsed:
