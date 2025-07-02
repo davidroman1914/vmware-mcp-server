@@ -84,13 +84,20 @@ def find_vms_by_category() -> Dict[str, Any]:
         # Parse VM names from the actual vCenter response format
         vm_names = []
         lines = all_vms.split('\n')
+        print(f"[DEBUG] Parsing {len(lines)} lines from vCenter response")
         for line in lines:
+            line_stripped = line.strip()
+            print(f"[DEBUG] Line: '{line_stripped}'")
             # Look for numbered list items with bold VM names: "1. **vm-name** (POWERED_ON)"
-            if line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '11.', '12.', '13.', '14.', '15.')):
-                if '**' in line:
+            if line_stripped.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '11.', '12.', '13.', '14.', '15.')):
+                print(f"[DEBUG] Found numbered line: '{line_stripped}'")
+                if '**' in line_stripped:
                     # Extract VM name from bold format: "**ova-inf-k8s-worker-uat-01**"
-                    vm_name = line.split('**')[1].split('**')[0]
+                    vm_name = line_stripped.split('**')[1].split('**')[0]
                     vm_names.append(vm_name)
+                    print(f"[DEBUG] Extracted VM name: '{vm_name}'")
+        print(f"[DEBUG] Total VMs extracted: {len(vm_names)}")
+        print(f"[DEBUG] VM names: {vm_names}")
         
         parsed = parse_maintenance_instructions()
         if 'error' in parsed:
