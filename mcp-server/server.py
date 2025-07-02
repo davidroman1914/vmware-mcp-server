@@ -114,4 +114,4 @@ def get_vm_summary_stats() -> str:
     return monitoring.get_vm_summary_stats()
 
 if __name__ == "__main__":
-    mcp.run() 
+    mcp.run()
