@@ -1,1 +1,3 @@
-pyvmomi>=8.0.0 
+fastmcp
+pyvmomi>=8.0.0
+requests>=2.25.0 

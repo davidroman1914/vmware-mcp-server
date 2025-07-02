@@ -4,6 +4,16 @@ A clean, focused Model Context Protocol (MCP) server for VMware vCenter manageme
 
 ## 🚀 Features
 
+- **VM Management**: List, create, power on/off VMs
+- **Host Monitoring**: Physical host information and health
+- **Performance Metrics**: CPU, memory, disk, network monitoring
+- **Fast REST API**: Quick VM listing and operations
+- **Modular Design**: Clean, maintainable code structure
+
+## Installation
+
+## 🚀 Features
+
 - **VM Listing**: List all VMs with detailed information (power state, IP, CPU, memory, network adapters)
 - **Power Management**: Power on/off VMs by name
 - **VM Creation**: Create new VMs from templates with full customization (IP, hostname, CPU, memory, disk)

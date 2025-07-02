@@ -1,354 +1,117 @@
 #!/usr/bin/env python3
 """
-VMware vCenter MCP Server using pyvmomi
-Supports VM listing, power management, and VM creation via MCP stdio protocol.
+VMware MCP Server - Main Entry Point
+Clean, modular FastMCP server for VMware vCenter management
 """
 
-import json
-import sys
-import os
-from typing import Dict, Any, List, Optional
-from pyVim.connect import SmartConnect, Disconnect
-from pyVmomi import vim
-import ssl
+from fastmcp import FastMCP
+import vm_info
+import power
+import vm_creation
+import monitoring
+import host_info
 
-# Import our modules
-from vm_info import VMInfoManager
-from power import PowerManager
-from vm_creation import VMCreationManager
+# Create the MCP server instance
+mcp = FastMCP(name="VMware MCP Server")
 
-class VMwareMCPServer:
-    def __init__(self):
-        self.vm_info = VMInfoManager()
-        self.power_manager = PowerManager()
-        self.vm_creation = VMCreationManager()
-        self.service_instance = None
-        
-    def connect_to_vcenter(self) -> bool:
-        """Connect to vCenter using environment variables."""
-        try:
-            host = os.getenv('VCENTER_HOST')
-            user = os.getenv('VCENTER_USER')
-            password = os.getenv('VCENTER_PASSWORD')
-            insecure = os.getenv('VCENTER_INSECURE', 'false').lower() == 'true'
-            
-            if not all([host, user, password]):
-                return False
-            
-            # Create SSL context
-            if insecure:
-                context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-                context.verify_mode = ssl.CERT_NONE
-            else:
-                context = ssl.create_default_context()
-            
-            # Connect to vCenter
-            self.service_instance = SmartConnect(
-                host=host,
-                user=user,
-                pwd=password,
-                sslContext=context
-            )
-            
-            return True
-            
-        except Exception as e:
-            return False
-    
-    def disconnect_from_vcenter(self):
-        """Disconnect from vCenter."""
-        if self.service_instance:
-            try:
-                Disconnect(self.service_instance)
-            except:
-                pass
-            self.service_instance = None
-    
-    def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle MCP initialize request."""
-        # Get the tools list
-        tools_response = self.handle_tools_list({"id": params.get("id")})
-        tools = tools_response["result"]["tools"]
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": params.get("id"),
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "tools": tools
-                },
-                "serverInfo": {
-                    "name": "vmware-vcenter-mcp-server",
-                    "version": "1.0.0"
-                }
-            }
-        }
-    
-    def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle MCP tools/list request."""
-        tools = [
-            {
-                "name": "list_vms",
-                "description": "List all VMs in vCenter with detailed information",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "power_on_vm",
-                "description": "Power on a VM by name",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "vm_name": {
-                            "type": "string",
-                            "description": "Name of the VM to power on"
-                        }
-                    },
-                    "required": ["vm_name"],
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "power_off_vm",
-                "description": "Power off a VM by name",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "vm_name": {
-                            "type": "string",
-                            "description": "Name of the VM to power off"
-                        }
-                    },
-                    "required": ["vm_name"],
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "create_vm_from_template",
-                "description": "Create a new VM from a template with customization",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "template_name": {
-                            "type": "string",
-                            "description": "Name of the template VM to clone from"
-                        },
-                        "vm_name": {
-                            "type": "string",
-                            "description": "Name for the new VM"
-                        },
-                        "hostname": {
-                            "type": "string",
-                            "description": "Hostname for the new VM"
-                        },
-                        "ip_address": {
-                            "type": "string",
-                            "description": "Static IP address"
-                        },
-                        "netmask": {
-                            "type": "string",
-                            "description": "Subnet mask"
-                        },
-                        "gateway": {
-                            "type": "string",
-                            "description": "Gateway IP address"
-                        },
-                        "network_name": {
-                            "type": "string",
-                            "description": "Network/port group name"
-                        },
-                        "cpu_count": {
-                            "type": "integer",
-                            "description": "Number of CPUs"
-                        },
-                        "memory_mb": {
-                            "type": "integer",
-                            "description": "Memory in MB"
-                        },
-                        "disk_size_gb": {
-                            "type": "integer",
-                            "description": "Disk size in GB"
-                        },
-                        "datastore_name": {
-                            "type": "string",
-                            "description": "Datastore name (optional)"
-                        }
-                    },
-                    "required": ["template_name", "vm_name", "hostname", "ip_address", "netmask", "gateway", "network_name"],
-                    "additionalProperties": False
-                }
-            }
-        ]
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": params.get("id"),
-            "result": {
-                "tools": tools
-            }
-        }
-    
-    def handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle MCP tools/call request."""
-        tool_name = params.get("name")
-        arguments = params.get("arguments", {})
-        
-        # Ensure we're connected to vCenter
-        if not self.service_instance:
-            if not self.connect_to_vcenter():
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "error": {
-                        "code": -1,
-                        "message": "Failed to connect to vCenter. Check VCENTER_HOST, VCENTER_USER, VCENTER_PASSWORD environment variables."
-                    }
-                }
-        
-        try:
-            if tool_name == "list_vms":
-                result = self.vm_info.list_all_vms(self.service_instance)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            elif tool_name == "power_on_vm":
-                vm_name = arguments.get("vm_name")
-                result = self.power_manager.power_on_vm(self.service_instance, vm_name)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            elif tool_name == "power_off_vm":
-                vm_name = arguments.get("vm_name")
-                result = self.power_manager.power_off_vm(self.service_instance, vm_name)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            elif tool_name == "create_vm_from_template":
-                result = self.vm_creation.create_vm_from_template(self.service_instance, arguments)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps(result, indent=2)
-                            }
-                        ]
-                    }
-                }
-            
-            else:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": params.get("id"),
-                    "error": {
-                        "code": -32601,
-                        "message": f"Unknown tool: {tool_name}"
-                    }
-                }
-        
-        except Exception as e:
-            return {
-                "jsonrpc": "2.0",
-                "id": params.get("id"),
-                "error": {
-                    "code": -1,
-                    "message": f"Error executing {tool_name}: {str(e)}"
-                }
-            }
-    
-    def run(self):
-        """Run the MCP server using stdio protocol."""
-        while True:
-            try:
-                # Read request from stdin
-                line = sys.stdin.readline()
-                if not line:
-                    break
-                
-                request = json.loads(line)
-                method = request.get("method")
-                params = request.get("params", {})
-                request_id = request.get("id")
-                
-                # Add the request ID to params for handlers
-                params["id"] = request_id
-                
-                # Handle different MCP methods
-                if method == "initialize":
-                    response = self.handle_initialize(params)
-                elif method == "tools/list":
-                    response = self.handle_tools_list(params)
-                elif method == "tools/call":
-                    response = self.handle_tools_call(params)
-                else:
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "error": {
-                            "code": -32601,
-                            "message": f"Unknown method: {method}"
-                        }
-                    }
-                
-                # Send response to stdout
-                print(json.dumps(response), end='')
-                sys.stdout.flush()
-                
-            except json.JSONDecodeError:
-                continue
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                error_response = {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id") if 'request' in locals() else None,
-                    "error": {
-                        "code": -1,
-                        "message": f"Server error: {str(e)}"
-                    }
-                }
-                print(json.dumps(error_response), end='')
-                sys.stdout.flush()
-        
-        # Cleanup
-        self.disconnect_from_vcenter()
+# VM Information Tools
+@mcp.tool()
+def list_vms() -> str:
+    """List all VMs using fast REST API."""
+    return vm_info.list_vms()
+
+@mcp.tool()
+def get_vm_details(vm_name: str) -> str:
+    """Get detailed VM information including IP addresses and network info."""
+    return vm_info.get_vm_details(vm_name)
+
+@mcp.tool()
+def list_templates() -> str:
+    """List all available templates."""
+    return vm_info.list_templates()
+
+@mcp.tool()
+def list_datastores() -> str:
+    """List all available datastores."""
+    return vm_info.list_datastores()
+
+@mcp.tool()
+def list_networks() -> str:
+    """List all available networks."""
+    return vm_info.list_networks()
+
+# Power Management Tools
+@mcp.tool()
+def power_on_vm(vm_name: str) -> str:
+    """Power on a VM by name."""
+    return power.power_on_vm(vm_name)
+
+@mcp.tool()
+def power_off_vm(vm_name: str) -> str:
+    """Power off a VM by name."""
+    return power.power_off_vm(vm_name)
+
+# VM Creation Tools
+@mcp.tool()
+def create_vm_custom(template_name: str, new_vm_name: str, ip_address: str = "192.168.1.100", 
+                    netmask: str = "255.255.255.0", gateway: str = "192.168.1.1", 
+                    memory_gb: int = 4, cpu_count: int = 2, disk_gb: int = 50, 
+                    network_name: str = "VM Network", datastore_name: str = "datastore1") -> str:
+    """Create a new VM from template with comprehensive customization (memory, CPU, disk, IP) - powered off by default."""
+    return vm_creation.create_vm_custom(
+        template_name=template_name,
+        new_vm_name=new_vm_name,
+        ip_address=ip_address,
+        netmask=netmask,
+        gateway=gateway,
+        memory_gb=memory_gb,
+        cpu_count=cpu_count,
+        disk_gb=disk_gb,
+        network_name=network_name,
+        datastore_name=datastore_name
+    )
+
+# Host Information Tools
+@mcp.tool()
+def list_hosts() -> str:
+    """List all physical hosts with basic information."""
+    return host_info.list_hosts()
+
+@mcp.tool()
+def get_host_details(host_name: str) -> str:
+    """Get detailed information about a specific physical host (hardware, network, storage, VMs)."""
+    return host_info.get_host_details(host_name)
+
+@mcp.tool()
+def get_host_performance_metrics(host_name: str) -> str:
+    """Get detailed performance metrics for a specific host (CPU, memory, disk, network)."""
+    return host_info.get_host_performance_metrics(host_name)
+
+@mcp.tool()
+def get_host_hardware_health(host_name: str) -> str:
+    """Get hardware health information for a specific host (sensors, system health)."""
+    return host_info.get_host_hardware_health(host_name)
+
+# Monitoring Tools
+@mcp.tool()
+def get_vm_performance(vm_name: str) -> str:
+    """Get detailed performance metrics for a specific VM (CPU, memory, disk, network)."""
+    return monitoring.get_vm_performance(vm_name)
+
+@mcp.tool()
+def get_host_performance(host_name: str = None) -> str:
+    """Get performance metrics for hosts (hardware info, health status)."""
+    return monitoring.get_host_performance(host_name)
+
+@mcp.tool()
+def list_performance_counters() -> str:
+    """List all available performance counters in vCenter."""
+    return monitoring.list_performance_counters()
+
+@mcp.tool()
+def get_vm_summary_stats() -> str:
+    """Get summary statistics for all VMs (counts, resource totals)."""
+    return monitoring.get_vm_summary_stats()
 
 if __name__ == "__main__":
-    server = VMwareMCPServer()
-    server.run() 
+    mcp.run()

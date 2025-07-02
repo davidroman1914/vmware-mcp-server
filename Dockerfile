@@ -14,11 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the mcp-server directory
 COPY mcp-server/ ./mcp-server/
 
-# Make server executable
-RUN chmod +x mcp-server/server.py
-
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Run the MCP server
+# Run the FastMCP server from mcp-server directory
 CMD ["python", "mcp-server/server.py"] 

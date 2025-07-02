@@ -1,105 +1,83 @@
 #!/usr/bin/env python3
 """
-Power Management Module using pyvmomi
-Handles powering VMs on and off.
+Power Management Module for VMware MCP Server
+Handles VM power operations (power on, power off)
 """
 
-from typing import Dict, Any, Optional
+import sys
 from pyVmomi import vim
-from vm_info import VMInfoManager
+import connection
 
-class PowerManager:
-    def __init__(self):
-        self.vm_info = VMInfoManager()
+
+def power_on_vm(vm_name: str) -> str:
+    """Power on a VM by name."""
+    service_instance = connection.get_service_instance()
+    if not service_instance:
+        return "Error: Could not connect to vCenter"
     
-    def power_on_vm(self, service_instance, vm_name: str) -> Dict[str, Any]:
-        """Power on a VM by name."""
-        try:
-            vm = self.vm_info.get_vm_by_name(service_instance, vm_name)
-            if not vm:
-                return {"error": f"VM '{vm_name}' not found"}
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        vm = None
+        for v in container.view:
+            if v.name == vm_name:
+                vm = v
+                break
+        
+        if not vm:
+            return f"VM '{vm_name}' not found"
+        
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
+            return f"VM '{vm_name}' is already powered on"
+        
+        task = vm.PowerOn()
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            return f"✅ Successfully powered on VM '{vm_name}'"
+        else:
+            return f"❌ Failed to power on VM '{vm_name}': {task.info.error.msg}"
             
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
-                return {"message": f"VM '{vm_name}' is already powered on"}
-            
-            task = vm.PowerOn()
-            # Wait for task to complete
-            while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-                pass
-            
-            if task.info.state == vim.TaskInfo.State.success:
-                return {"message": f"Successfully powered on VM '{vm_name}'"}
-            else:
-                return {"error": f"Failed to power on VM '{vm_name}': {task.info.error.msg}"}
-                
-        except Exception as e:
-            return {"error": f"Error powering on VM '{vm_name}': {str(e)}"}
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def power_off_vm(vm_name: str) -> str:
+    """Power off a VM by name."""
+    service_instance = connection.get_service_instance()
+    if not service_instance:
+        return "Error: Could not connect to vCenter"
     
-    def power_off_vm(self, service_instance, vm_name: str) -> Dict[str, Any]:
-        """Power off a VM by name."""
-        try:
-            vm = self.vm_info.get_vm_by_name(service_instance, vm_name)
-            if not vm:
-                return {"error": f"VM '{vm_name}' not found"}
+    try:
+        content = service_instance.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.VirtualMachine], True
+        )
+        
+        vm = None
+        for v in container.view:
+            if v.name == vm_name:
+                vm = v
+                break
+        
+        if not vm:
+            return f"VM '{vm_name}' not found"
+        
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
+            return f"VM '{vm_name}' is already powered off"
+        
+        task = vm.PowerOff()
+        while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
+            pass
+        
+        if task.info.state == vim.TaskInfo.State.success:
+            return f"✅ Successfully powered off VM '{vm_name}'"
+        else:
+            return f"❌ Failed to power off VM '{vm_name}': {task.info.error.msg}"
             
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
-                return {"message": f"VM '{vm_name}' is already powered off"}
-            
-            task = vm.PowerOff()
-            # Wait for task to complete
-            while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-                pass
-            
-            if task.info.state == vim.TaskInfo.State.success:
-                return {"message": f"Successfully powered off VM '{vm_name}'"}
-            else:
-                return {"error": f"Failed to power off VM '{vm_name}': {task.info.error.msg}"}
-                
-        except Exception as e:
-            return {"error": f"Error powering off VM '{vm_name}': {str(e)}"}
-    
-    def shutdown_vm(self, service_instance, vm_name: str) -> Dict[str, Any]:
-        """Gracefully shutdown a VM by name."""
-        try:
-            vm = self.vm_info.get_vm_by_name(service_instance, vm_name)
-            if not vm:
-                return {"error": f"VM '{vm_name}' not found"}
-            
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
-                return {"message": f"VM '{vm_name}' is already powered off"}
-            
-            task = vm.ShutdownGuest()
-            # Wait for task to complete
-            while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-                pass
-            
-            if task.info.state == vim.TaskInfo.State.success:
-                return {"message": f"Successfully shutdown VM '{vm_name}'"}
-            else:
-                return {"error": f"Failed to shutdown VM '{vm_name}': {task.info.error.msg}"}
-                
-        except Exception as e:
-            return {"error": f"Error shutting down VM '{vm_name}': {str(e)}"}
-    
-    def reset_vm(self, service_instance, vm_name: str) -> Dict[str, Any]:
-        """Reset a VM by name."""
-        try:
-            vm = self.vm_info.get_vm_by_name(service_instance, vm_name)
-            if not vm:
-                return {"error": f"VM '{vm_name}' not found"}
-            
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
-                return {"error": f"Cannot reset VM '{vm_name}' - it is powered off"}
-            
-            task = vm.Reset()
-            # Wait for task to complete
-            while task.info.state not in [vim.TaskInfo.State.success, vim.TaskInfo.State.error]:
-                pass
-            
-            if task.info.state == vim.TaskInfo.State.success:
-                return {"message": f"Successfully reset VM '{vm_name}'"}
-            else:
-                return {"error": f"Failed to reset VM '{vm_name}': {task.info.error.msg}"}
-                
-        except Exception as e:
-            return {"error": f"Error resetting VM '{vm_name}': {str(e)}"} 
+    except Exception as e:
+        return f"Error: {e}" 
