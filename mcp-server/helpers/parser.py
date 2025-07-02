@@ -8,11 +8,7 @@ import re
 from typing import Dict, Any, List, Optional, Tuple
 from collections import defaultdict
 
-try:
-    import spacy
-    SPACY_AVAILABLE = True
-except ImportError:
-    SPACY_AVAILABLE = False
+import spacy
 
 # Constants for better maintainability
 POWER_ACTIONS = {
@@ -118,8 +114,7 @@ def parse_maintenance_instructions_spacy(instructions_text: str) -> Dict[str, An
     Returns:
         Structured data with power sequences and categories
     """
-    if not SPACY_AVAILABLE:
-        return {"error": "spaCy not available. Install with: pip install spacy"}
+
     
     if not instructions_text or not instructions_text.strip():
         return {"error": "Empty or invalid instructions text"}
