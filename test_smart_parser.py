@@ -8,7 +8,7 @@ import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'mcp-server'))
 
-from parser_helpers import parse_maintenance_instructions_smart, parse_maintenance_instructions_with_fallback
+from helpers.parser import parse_maintenance_instructions_smart, parse_maintenance_instructions_with_fallback
 
 def test_smart_parser():
     """Test the smart parser with different instruction formats."""
@@ -117,7 +117,7 @@ def test_smart_parser():
                 "k8s-worker-01", "k8s-worker-02", "k8s-master-01", 
                 "k8s-master-02", "app-server-01", "db-server-01"
             ]
-            from parser_helpers import categorize_vms_smart
+            from helpers.parser import categorize_vms_smart
             categorized = categorize_vms_smart(test_vms, result)
             print(f"\n5. VM Categorization Test:")
             print("-" * 40)
