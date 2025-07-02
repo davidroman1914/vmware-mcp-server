@@ -1,26 +1,34 @@
 # VMware VM Maintenance Procedures
 
-## Kubernetes VM Power-Down Sequence
+## VM Power-Down Sequence
 
-When shutting down Kubernetes VMs for maintenance:
+When shutting down VMs for maintenance:
 
-1. **Kubernetes Worker Nodes**
-   - Find all VMs with names containing "worker" or "node"
-   - Power off all Kubernetes worker nodes
+1. **Wave 1 - Worker Nodes**
+   We will power off all the VMs with the following names or selectors in our list below. 
+   - workers or node 
 
-2. **Kubernetes Master Nodes**
-   - Find all VMs with names containing "master" or "control-plane"
-   - Power off all Kubernetes master nodes
+2. **Wave 2 - Control Plane**
+   We will power off all the VMs with the following names or selectors in our list below. 
+   - master or control-plane
 
-## Kubernetes VM Power-Up Sequence
+3. **Wave 3 - Remaining VMs**
+   We will power off all remaining VMs not already powered off.
 
-When starting up Kubernetes VMs after maintenance:
+## VM Power-Up Sequence
 
-1. **Kubernetes Master Nodes**
-   - Power on Kubernetes master nodes first
+When starting up VMs after maintenance:
 
-2. **Kubernetes Worker Nodes**
-   - Power on Kubernetes worker nodes
+1. **Wave 1 - Control Plane**
+   We will power on all the VMs with the following names or selectors in our list below. 
+   - master or control-plane
+
+2. **Wave 2 - Worker Nodes**
+   We will power on all the VMs with the following names or selectors in our list below. 
+   - workers or node 
+
+3. **Wave 3 - Applications**
+   We will power on all remaining VMs not already powered on.
 
 ## Maintenance Mode Procedures
 

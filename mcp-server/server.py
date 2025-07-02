@@ -10,6 +10,7 @@ import power
 import vm_creation
 import monitoring
 import host_info
+import maintenance
 
 # Create the MCP server instance
 mcp = FastMCP(name="VMware MCP Server")
@@ -112,6 +113,27 @@ def list_performance_counters() -> str:
 def get_vm_summary_stats() -> str:
     """Get summary statistics for all VMs (counts, resource totals)."""
     return monitoring.get_vm_summary_stats()
+
+# Maintenance Tools
+@mcp.tool()
+def get_maintenance_instructions() -> str:
+    """Get the maintenance instructions from the maintenance-vmware.md file."""
+    return maintenance.read_maintenance_instructions()
+
+@mcp.tool()
+def get_maintenance_plan() -> str:
+    """Get a maintenance plan showing what VMs will be affected and the instructions."""
+    return maintenance.get_maintenance_plan()
+
+@mcp.tool()
+def execute_power_down_sequence() -> str:
+    """Execute the power-down sequence based on maintenance instructions."""
+    return maintenance.execute_power_down_sequence()
+
+@mcp.tool()
+def execute_power_up_sequence() -> str:
+    """Execute the power-up sequence based on maintenance instructions."""
+    return maintenance.execute_power_up_sequence()
 
 if __name__ == "__main__":
     mcp.run()

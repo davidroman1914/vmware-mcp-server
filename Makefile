@@ -16,7 +16,10 @@ run: ## Run server locally
 	cd mcp-server && python server.py
 
 test: ## Test server locally
-	cd mcp-server && python test_server.py
+	python tests/test_maintenance.py
+
+test-all: ## Run all tests
+	python -m pytest tests/ -v
 
 build: ## Build Docker image
 	docker build -t vmware-mcp-server .
@@ -25,8 +28,10 @@ run-docker: ## Run in Docker
 	docker-compose up vmware-mcp-server
 
 test-docker: ## Test in Docker
-	docker run --rm --env-file .env vmware-mcp-server python mcp-server/test_server.py
+	docker run --rm --env-file .env vmware-mcp-server python tests/test_maintenance.py
 
 clean: ## Clean up
 	docker-compose down --rmi all --volumes
-	cd mcp-server && rm -rf __pycache__ *.pyc .pytest_cache 
+	rm -rf __pycache__ mcp-server/__pycache__ tests/__pycache__
+	find . -name "*.pyc" -delete
+	find . -name ".pytest_cache" -type d -exec rm -rf {} + 2>/dev/null || true 
