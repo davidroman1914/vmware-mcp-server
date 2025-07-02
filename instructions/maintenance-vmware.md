@@ -6,7 +6,7 @@ When shutting down VMs for maintenance:
 
 1. **Wave 1 - Worker Nodes**
    We will power off all the VMs with the following names or selectors in our list below. 
-   - workers or node 
+   - worker or node 
 
 2. **Wave 2 - Control Plane**
    We will power off all the VMs with the following names or selectors in our list below. 
@@ -25,7 +25,7 @@ When starting up VMs after maintenance:
 
 2. **Wave 2 - Worker Nodes**
    We will power on all the VMs with the following names or selectors in our list below. 
-   - workers or node 
+   - worker or node 
 
 3. **Wave 3 - Applications**
    We will power on all remaining VMs not already powered on.
