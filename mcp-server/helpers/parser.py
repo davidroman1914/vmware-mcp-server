@@ -5,8 +5,66 @@ Provides smart parsing functions for natural language maintenance instructions
 """
 
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from collections import defaultdict
+
+try:
+    import spacy
+    SPACY_AVAILABLE = True
+except ImportError:
+    SPACY_AVAILABLE = False
+
+# Constants for better maintainability
+POWER_ACTIONS = {
+    "shutdown": [
+        r"shut\s*down", r"power\s*off", r"turn\s*off", r"stop",
+        r"power\s*down", r"shutdown", r"poweroff"
+    ],
+    "startup": [
+        r"start\s*up", r"power\s*on", r"turn\s*on", r"start",
+        r"bring\s*up", r"startup", r"poweron", r"boot"
+    ]
+}
+
+SEQUENCE_PATTERNS = [
+    r"(\d+)\.?\s*\*\*([^*]+)\*\*",  # 1. **Wave 1 - Worker Nodes**
+    r"wave\s*(\d+)[:\-]?\s*([^,\n]+)",  # Wave 1: Worker Nodes
+    r"(\d+)\.?\s*([^,\n]+?)(?:nodes?|plane|vms?|applications?)",  # 1. Worker Nodes
+    r"first[:\-]?\s*([^,\n]+)",  # First: Worker Nodes
+    r"second[:\-]?\s*([^,\n]+)",  # Second: Control Plane
+    r"third[:\-]?\s*([^,\n]+)",  # Third: Applications
+]
+
+CATEGORY_PATTERNS = {
+    "worker_nodes": [
+        r"worker\s*nodes?", r"worker", r"node", r"nodes",
+        r"worker\s*servers?", r"compute\s*nodes?"
+    ],
+    "control_plane": [
+        r"control\s*plane", r"control-plane", r"controlplane",
+        r"master", r"masters", r"api\s*server", r"apiserver"
+    ],
+    "applications": [
+        r"applications?", r"app", r"apps", r"services?",
+        r"application\s*servers?", r"app\s*servers?"
+    ],
+    "database": [
+        r"databases?", r"db", r"sql", r"mysql", r"postgres",
+        r"database\s*servers?", r"db\s*servers?"
+    ],
+    "remaining": [
+        r"remaining", r"everything\s*else", r"rest", r"others",
+        r"remaining\s*vms?", r"everything\s*else"
+    ]
+}
+
+SELECTOR_PATTERNS = [
+    r'"([^"]+)"',  # Quoted strings
+    r'(\w+(?:\s+\w+)*)\s+or\s+(\w+(?:\s+\w+)*)',  # "worker or node"
+    r'[-•]\s*(\w+(?:\s+\w+)*)',  # Bullet points
+    r'selectors?:\s*(\w+(?:\s*,\s*\w+)*)',  # "selectors: worker, node"
+    r'(\w+(?:\s+\w+)*)\s+in\s+their\s+names?',  # "worker in their names"
+]
 
 def parse_maintenance_instructions_smart(instructions_text: str) -> Dict[str, Any]:
     """
@@ -18,9 +76,12 @@ def parse_maintenance_instructions_smart(instructions_text: str) -> Dict[str, An
     Returns:
         Structured data with power sequences and categories
     """
+    if not instructions_text or not instructions_text.strip():
+        return {"error": "Empty or invalid instructions text"}
+    
     try:
         # Normalize text
-        text = instructions_text.lower()
+        text = instructions_text.lower().strip()
         
         # Extract sections
         sections = _extract_sections(text)
@@ -29,6 +90,10 @@ def parse_maintenance_instructions_smart(instructions_text: str) -> Dict[str, An
         power_down_sequence = _parse_sequence(sections.get("shutdown", ""), "shutdown")
         power_up_sequence = _parse_sequence(sections.get("startup", ""), "startup")
         
+        # Validate that we found some content
+        if not power_down_sequence and not power_up_sequence:
+            return {"error": "No power sequences found in instructions"}
+        
         # Extract categories
         categories = _extract_categories(power_down_sequence + power_up_sequence)
         
@@ -36,7 +101,8 @@ def parse_maintenance_instructions_smart(instructions_text: str) -> Dict[str, An
             "power_down_sequence": power_down_sequence,
             "power_up_sequence": power_up_sequence,
             "categories": categories,
-            "instructions": instructions_text
+            "instructions": instructions_text,
+            "parser_type": "smart"
         }
         
     except Exception as e:
@@ -52,9 +118,13 @@ def parse_maintenance_instructions_spacy(instructions_text: str) -> Dict[str, An
     Returns:
         Structured data with power sequences and categories
     """
+    if not SPACY_AVAILABLE:
+        return {"error": "spaCy not available. Install with: pip install spacy"}
+    
+    if not instructions_text or not instructions_text.strip():
+        return {"error": "Empty or invalid instructions text"}
+    
     try:
-        import spacy
-        
         # Load English language model
         try:
             nlp = spacy.load("en_core_web_sm")
@@ -62,7 +132,7 @@ def parse_maintenance_instructions_spacy(instructions_text: str) -> Dict[str, An
             return {"error": "spaCy English model not found. Install with: python -m spacy download en_core_web_sm"}
         
         # Parse the text with spaCy
-        doc = nlp(instructions_text.lower())
+        doc = nlp(instructions_text.lower().strip())
         
         # Extract sections
         sections = _extract_sections_spacy(doc)
@@ -71,6 +141,10 @@ def parse_maintenance_instructions_spacy(instructions_text: str) -> Dict[str, An
         power_down_sequence = _parse_power_sequence_spacy(sections.get("shutdown", ""), "shutdown")
         power_up_sequence = _parse_power_sequence_spacy(sections.get("startup", ""), "startup")
         
+        # Validate that we found some content
+        if not power_down_sequence and not power_up_sequence:
+            return {"error": "No power sequences found in instructions"}
+        
         # Extract categories
         categories = _extract_categories(power_down_sequence + power_up_sequence)
         
@@ -78,11 +152,10 @@ def parse_maintenance_instructions_spacy(instructions_text: str) -> Dict[str, An
             "power_down_sequence": power_down_sequence,
             "power_up_sequence": power_up_sequence,
             "categories": categories,
-            "instructions": instructions_text
+            "instructions": instructions_text,
+            "parser_type": "spacy"
         }
         
-    except ImportError:
-        return {"error": "spaCy not available. Install with: pip install spacy"}
     except Exception as e:
         return {"error": f"spaCy parsing failed: {str(e)}"}
 
@@ -97,7 +170,10 @@ def parse_maintenance_instructions_with_fallback(instructions_text: str) -> Dict
     Returns:
         Structured data with power sequences and categories
     """
-    # Try smart parsing first
+    if not instructions_text or not instructions_text.strip():
+        return {"error": "Empty or invalid instructions text"}
+    
+    # Try smart parsing first (most reliable)
     result = parse_maintenance_instructions_smart(instructions_text)
     if "error" not in result:
         return result
@@ -120,6 +196,9 @@ def parse_maintenance_instructions_manual(instructions_text: str) -> Dict[str, A
     Returns:
         Structured data with power sequences and categories
     """
+    if not instructions_text or not instructions_text.strip():
+        return {"error": "Empty or invalid instructions text"}
+    
     try:
         power_down_section, power_up_section = [], []
         in_power_down = in_power_up = False
@@ -143,12 +222,13 @@ def parse_maintenance_instructions_manual(instructions_text: str) -> Dict[str, A
         return {
             'power_down_sequence': power_down_section,
             'power_up_sequence': power_up_section,
-            'instructions': instructions_text
+            'instructions': instructions_text,
+            'parser_type': 'manual'
         }
     except Exception as e:
         return {'error': f"Manual parsing failed: {str(e)}"}
 
-def categorize_vms_smart(vm_names: List[str], parsed_instructions: Dict[str, Any]) -> Dict[str, List[str]]:
+def categorize_vms_smart(vm_names: List[str], parsed_instructions: Dict[str, Any]) -> Dict[str, Any]:
     """
     Categorize VMs based on parsed instructions.
     
@@ -159,10 +239,16 @@ def categorize_vms_smart(vm_names: List[str], parsed_instructions: Dict[str, Any
     Returns:
         Dictionary mapping categories to lists of VM names
     """
+    if not vm_names:
+        return {"error": "No VM names provided"}
+    
     if "error" in parsed_instructions:
         return {"error": parsed_instructions["error"]}
     
     categories = parsed_instructions.get("categories", {})
+    if not categories:
+        return {"error": "No categories found in parsed instructions"}
+    
     categorized_vms = {}
     used_vms = set()
     
@@ -182,36 +268,45 @@ def categorize_vms_smart(vm_names: List[str], parsed_instructions: Dict[str, Any
                 if vm_name in used_vms:
                     continue
                 
-                vm_lower = vm_name.lower()
-                for selector in selectors:
-                    selector_lower = selector.lower()
-                    # Handle plural/singular variations
-                    selector_singular = selector_lower[:-1] if selector_lower.endswith('s') else selector_lower
-                    
-                    if (selector_lower in vm_lower or 
-                        selector_singular in vm_lower or
-                        vm_lower in selector_lower or 
-                        vm_lower in selector_singular):
-                        categorized_vms[category].append(vm_name)
-                        used_vms.add(vm_name)
-                        break
+                if _vm_matches_selectors(vm_name, selectors):
+                    categorized_vms[category].append(vm_name)
+                    used_vms.add(vm_name)
     
     return categorized_vms
 
-# Helper functions for smart parsing
+def _vm_matches_selectors(vm_name: str, selectors: List[str]) -> bool:
+    """
+    Check if a VM name matches any of the given selectors.
+    
+    Args:
+        vm_name: Name of the VM to check
+        selectors: List of selector patterns to match against
+        
+    Returns:
+        True if VM matches any selector, False otherwise
+    """
+    vm_lower = vm_name.lower()
+    
+    for selector in selectors:
+        selector_lower = selector.lower()
+        
+        # Handle plural/singular variations
+        selector_singular = selector_lower[:-1] if selector_lower.endswith('s') else selector_lower
+        vm_singular = vm_lower[:-1] if vm_lower.endswith('s') else vm_lower
+        
+        # Check various matching patterns
+        if (selector_lower in vm_lower or 
+            selector_singular in vm_lower or
+            vm_lower in selector_lower or 
+            vm_lower in selector_singular or
+            vm_singular in selector_lower or
+            vm_singular in selector_singular):
+            return True
+    
+    return False
+
 def _extract_sections(text: str) -> Dict[str, str]:
     """Extract shutdown and startup sections."""
-    power_patterns = {
-        "shutdown": [
-            r"shut\s*down", r"power\s*off", r"turn\s*off", r"stop",
-            r"power\s*down", r"shutdown", r"poweroff"
-        ],
-        "startup": [
-            r"start\s*up", r"power\s*on", r"turn\s*on", r"start",
-            r"bring\s*up", r"startup", r"poweron", r"boot"
-        ]
-    }
-    
     sections = {"shutdown": "", "startup": ""}
     current_section = None
     
@@ -219,9 +314,10 @@ def _extract_sections(text: str) -> Dict[str, str]:
     for line in lines:
         line_lower = line.lower()
         
-        if any(re.search(pattern, line_lower) for pattern in power_patterns["shutdown"]):
+        # Check for section headers
+        if any(re.search(pattern, line_lower) for pattern in POWER_ACTIONS["shutdown"]):
             current_section = "shutdown"
-        elif any(re.search(pattern, line_lower) for pattern in power_patterns["startup"]):
+        elif any(re.search(pattern, line_lower) for pattern in POWER_ACTIONS["startup"]):
             current_section = "startup"
         elif line_lower.startswith('##') and current_section:
             current_section = None
@@ -236,19 +332,11 @@ def _parse_sequence(section_text: str, sequence_type: str) -> List[Dict[str, Any
     if not section_text.strip():
         return []
     
-    sequence_patterns = [
-        r"(\d+)\.?\s*\*\*([^*]+)\*\*",  # 1. **Wave 1 - Worker Nodes**
-        r"wave\s*(\d+)[:\-]?\s*([^,\n]+)",  # Wave 1: Worker Nodes
-        r"(\d+)\.?\s*([^,\n]+?)(?:nodes?|plane|vms?|applications?)",  # 1. Worker Nodes
-        r"first[:\-]?\s*([^,\n]+)",  # First: Worker Nodes
-        r"second[:\-]?\s*([^,\n]+)",  # Second: Control Plane
-        r"third[:\-]?\s*([^,\n]+)",  # Third: Applications
-    ]
-    
     waves = []
     wave_order = 1
     
-    for pattern in sequence_patterns:
+    # Look for wave patterns
+    for pattern in SEQUENCE_PATTERNS:
         matches = re.finditer(pattern, section_text, re.IGNORECASE)
         for match in matches:
             if len(match.groups()) >= 2:
@@ -277,32 +365,9 @@ def _parse_sequence(section_text: str, sequence_type: str) -> List[Dict[str, Any
 
 def _categorize_description(description: str) -> str:
     """Categorize a description into a standard category."""
-    category_patterns = {
-        "worker_nodes": [
-            r"worker\s*nodes?", r"worker", r"node", r"nodes",
-            r"worker\s*servers?", r"compute\s*nodes?"
-        ],
-        "control_plane": [
-            r"control\s*plane", r"control-plane", r"controlplane",
-            r"master", r"masters", r"api\s*server", r"apiserver"
-        ],
-        "applications": [
-            r"applications?", r"app", r"apps", r"services?",
-            r"application\s*servers?", r"app\s*servers?"
-        ],
-        "database": [
-            r"databases?", r"db", r"sql", r"mysql", r"postgres",
-            r"database\s*servers?", r"db\s*servers?"
-        ],
-        "remaining": [
-            r"remaining", r"everything\s*else", r"rest", r"others",
-            r"remaining\s*vms?", r"everything\s*else"
-        ]
-    }
-    
     desc_lower = description.lower()
     
-    for category, patterns in category_patterns.items():
+    for category, patterns in CATEGORY_PATTERNS.items():
         if any(re.search(pattern, desc_lower, re.IGNORECASE) for pattern in patterns):
             return category
     
@@ -322,14 +387,6 @@ def _categorize_description(description: str) -> str:
 
 def _extract_selectors_from_context(text: str, position: int) -> List[str]:
     """Extract selectors from the context around a position."""
-    selector_patterns = [
-        r'"([^"]+)"',  # Quoted strings
-        r'(\w+(?:\s+\w+)*)\s+or\s+(\w+(?:\s+\w+)*)',  # "worker or node"
-        r'[-•]\s*(\w+(?:\s+\w+)*)',  # Bullet points
-        r'selectors?:\s*(\w+(?:\s*,\s*\w+)*)',  # "selectors: worker, node"
-        r'(\w+(?:\s+\w+)*)\s+in\s+their\s+names?',  # "worker in their names"
-    ]
-    
     selectors = []
     sentences = re.split(r'[.!?]', text)
     current_pos = 0
@@ -337,15 +394,30 @@ def _extract_selectors_from_context(text: str, position: int) -> List[str]:
     for sentence in sentences:
         sentence_end = current_pos + len(sentence)
         if current_pos <= position <= sentence_end:
-            for pattern in selector_patterns:
-                matches = re.findall(pattern, sentence, re.IGNORECASE)
-                for match in matches:
-                    if isinstance(match, tuple):
-                        selectors.extend(match)
-                    else:
-                        selectors.append(match)
+            selectors.extend(_extract_selectors_from_text(sentence))
             break
         current_pos = sentence_end + 1
+    
+    return selectors
+
+def _extract_selectors_from_text(text: str) -> List[str]:
+    """Extract selectors from text using various patterns."""
+    selectors = []
+    
+    # Apply all selector patterns
+    for pattern in SELECTOR_PATTERNS:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for match in matches:
+            if isinstance(match, tuple):
+                selectors.extend(match)
+            else:
+                selectors.append(match)
+    
+    # Look for category-specific keywords
+    for category, patterns in CATEGORY_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                selectors.append(pattern.replace(r'\s+', ' '))
     
     # Clean and deduplicate
     clean_selectors = []
@@ -430,7 +502,6 @@ def _parse_power_sequence_spacy(section_text: str, sequence_type: str) -> List[D
     if not section_text.strip():
         return []
     
-    import spacy
     nlp = spacy.load("en_core_web_sm")
     doc = nlp(section_text)
     
