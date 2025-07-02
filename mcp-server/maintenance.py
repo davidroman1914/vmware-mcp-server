@@ -88,20 +88,24 @@ def find_vms_by_category() -> Dict[str, Any]:
         for line in lines:
             line_stripped = line.strip()
             print(f"[DEBUG] Line: '{line_stripped}'")
-            # Look for numbered list items with bold VM names: "1. **vm-name** (POWERED_ON)"
-            if line_stripped.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '11.', '12.', '13.', '14.', '15.')):
-                print(f"[DEBUG] Found numbered line: '{line_stripped}'")
-                if '**' in line_stripped:
-                    # Extract VM name from bold format: "**ova-inf-k8s-worker-uat-01**"
-                    vm_name = line_stripped.split('**')[1].split('**')[0]
-                    vm_names.append(vm_name)
-                    print(f"[DEBUG] Extracted VM name: '{vm_name}'")
+            # Look for bullet points with VM names: "- ova-inf-k8s-worker-uat-01 (POWERED_ON)"
+            if line_stripped.startswith('- ') and '(POWERED_ON)' in line_stripped:
+                print(f"[DEBUG] Found VM line: '{line_stripped}'")
+                # Extract VM name: "- ova-inf-k8s-worker-uat-01 (POWERED_ON)" -> "ova-inf-k8s-worker-uat-01"
+                vm_name = line_stripped[2:].split(' (POWERED_ON)')[0]  # Remove "- " prefix and " (POWERED_ON)" suffix
+                vm_names.append(vm_name)
+                print(f"[DEBUG] Extracted VM name: '{vm_name}'")
         print(f"[DEBUG] Total VMs extracted: {len(vm_names)}")
         print(f"[DEBUG] VM names: {vm_names}")
         
         parsed = parse_maintenance_instructions()
         if 'error' in parsed:
             return parsed
+        
+        # Add debug info to the return data for troubleshooting
+        debug_info = f"DEBUG: Parsed {len(vm_names)} VMs from vCenter response"
+        if len(vm_names) == 0:
+            debug_info += f"\nDEBUG: Raw vCenter response preview: {all_vms[:500]}..."
         
         # Extract categories from both sequences
         categories = _extract_categories_from_sequence(parsed['power_down_sequence'])
@@ -136,7 +140,8 @@ def find_vms_by_category() -> Dict[str, Any]:
         return {
             'categories': categorized_vms,
             'all_vms': vm_names,
-            'parsed_instructions': parsed
+            'parsed_instructions': parsed,
+            'debug_info': debug_info
         }
     except Exception as e:
         return {'error': f"Error categorizing VMs: {str(e)}"}
@@ -190,6 +195,11 @@ def get_maintenance_plan() -> str:
             plan.append(f"{category_display} ({len(vms)}): {', '.join(vms) if vms else 'None'}")
         
         plan.append(f"\nTotal VMs: {len(vm_data['all_vms'])}")
+        
+        # Add debug info if available
+        if 'debug_info' in vm_data:
+            plan.append(f"\n{vm_data['debug_info']}")
+        
         return '\n'.join(plan)
     except Exception as e:
         return f"Error getting maintenance plan: {str(e)}" 
