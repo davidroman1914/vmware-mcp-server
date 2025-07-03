@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the mcp-server directory
 COPY mcp-server/ ./mcp-server/
 
+# Copy the instructions directory
+COPY instructions/ ./instructions/
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
