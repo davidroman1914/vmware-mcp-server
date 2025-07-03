@@ -8,6 +8,7 @@ A clean, focused Model Context Protocol (MCP) server for VMware vCenter manageme
 - **Host Monitoring**: Physical host information and health
 - **Performance Metrics**: CPU, memory, disk, network monitoring
 - **Fast REST API**: Quick VM listing and operations
+- **Multiple Transport Modes**: STDIO (Goose), SSE (n8n), HTTP (web)
 - **Modular Design**: Clean, maintainable code structure
 
 ## Installation
@@ -55,6 +56,11 @@ VCENTER_HOST=your-vcenter-host
 VCENTER_USER=your-username
 VCENTER_PASSWORD=your-password
 VCENTER_INSECURE=true  # Set to "true" for self-signed certificates
+
+# MCP Transport Configuration
+MCP_TRANSPORT=stdio  # Options: stdio, sse, http
+MCP_HOST=127.0.0.1   # For sse/http modes
+MCP_PORT=8000        # For sse/http modes
 ```
 
 ## 🚀 Quick Start
@@ -87,6 +93,38 @@ make run
 
 # Test locally
 make test
+```
+
+## 🌐 Transport Modes
+
+The VMware MCP Server supports multiple transport protocols for different use cases:
+
+### STDIO Mode (Default)
+- **Use case**: Local tools like Goose
+- **Configuration**: `MCP_TRANSPORT=stdio` (default)
+- **Command**: `python mcp-server/server.py`
+
+### SSE Mode (Server-Sent Events)
+- **Use case**: Web clients like n8n
+- **Configuration**: `MCP_TRANSPORT=sse`
+- **Command**: `python mcp-server/server.py`
+- **Access**: `http://127.0.0.1:8000`
+
+### HTTP Mode
+- **Use case**: Web deployments and APIs
+- **Configuration**: `MCP_TRANSPORT=http`
+- **Command**: `python mcp-server/server.py`
+- **Access**: `http://127.0.0.1:8000/mcp`
+
+### Environment Variables for Transport
+```bash
+# Transport mode (stdio, sse, http)
+MCP_TRANSPORT=stdio
+
+# Network configuration (for sse/http modes)
+MCP_HOST=127.0.0.1
+MCP_PORT=8000
+MCP_PATH=/mcp  # Only for http mode
 ```
 
 ## 📋 Available MCP Tools

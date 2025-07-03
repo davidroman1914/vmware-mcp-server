@@ -100,8 +100,10 @@ def get_vm_performance(vm_name: str) -> str:
     return monitoring.get_vm_performance(vm_name)
 
 @mcp.tool()
-def get_host_performance(host_name: str = None) -> str:
+def get_host_performance(host_name: str = "") -> str:
     """Get performance metrics for hosts (hardware info, health status)."""
+    if not host_name:
+        return "Error: Host name is required"
     return monitoring.get_host_performance(host_name)
 
 @mcp.tool()
@@ -136,4 +138,25 @@ def execute_power_up_sequence() -> str:
     return maintenance.execute_power_up_sequence()
 
 if __name__ == "__main__":
-    mcp.run()
+    import os
+    
+    # Get transport mode from environment variable, default to stdio
+    transport_mode = (os.getenv('MCP_TRANSPORT') or 'stdio').lower()
+    
+    if transport_mode == 'sse':
+        # SSE mode for web clients like n8n
+        host = os.getenv('MCP_HOST', '127.0.0.1')
+        port = int(os.getenv('MCP_PORT', '8000'))
+        print(f"Starting VMware MCP Server in SSE mode on {host}:{port}")
+        mcp.run(transport="sse", host=host, port=port)
+    elif transport_mode == 'http':
+        # HTTP mode for web deployments
+        host = os.getenv('MCP_HOST', '127.0.0.1')
+        port = int(os.getenv('MCP_PORT', '8000'))
+        path = os.getenv('MCP_PATH') or '/mcp'
+        print(f"Starting VMware MCP Server in HTTP mode on {host}:{port}{path}")
+        mcp.run(transport="http", host=host, port=port, path=path)
+    else:
+        # STDIO mode (default) for local tools like Goose
+        print("Starting VMware MCP Server in STDIO mode")
+        mcp.run()
